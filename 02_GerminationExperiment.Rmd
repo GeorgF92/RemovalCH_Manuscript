@@ -1,0 +1,346 @@
+---
+title: "02_GerminationExperiment"
+author: "Georg V. Flückiger"
+date: "2025-05-04"
+output: html_document
+---
+
+############################################################
+
+# Purpose:
+Assess germination patterns of two nonnative plant species in relation to elevation, cover, and sampled area across 
+sites in a removal experiment conducted along an elevation gradient in the Swiss Alps.
+
+# Description:
+This R Markdown document presents the full data cleaning, processing, and statistical analysis pipeline for the 
+germination experiment. It links seedling emergence to site-level environmental variables and vegetation cover (before invasive plant removal). Statistical analyses were performed using negative binomial regression models to account for overdispersion in count data.
+
+# Key steps:
+ - Import and clean germination data
+ - Calculate site-level mean cover from earlier vegetation surveys
+ - Estimate area sampled based on soil core counts
+ - Fit and compare generalized linear models
+ - Conduct model diagnostics and visualize predicted relationships
+
+# Required R packages:
+ - tidyverse: data handling and plotting
+ - MASS: negative binomial models
+ - car: diagnostic tools and coefficient comparison
+ - DHARMa: residual diagnostics
+
+Author: Georg V. Flückiger  
+Last updated: 2025-05-04
+
+############################################################
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Settings
+Sys.setenv(LANG = "en")
+
+# Main directory 
+main_dir <- "D:/Programming/RemovalCH_Manuscript/RemovalCH_Analyses/Data/"
+
+# Load packages
+library(tidyverse)
+library(DHARMa)
+library(car)
+library(MASS)
+library(ggpubr)
+
+# Set ggplot theme
+my_theme <- theme(panel.grid.major = element_blank(), 
+                  panel.grid.minor = element_blank(),
+                  panel.background = element_rect(fill = "white", color = "black"),
+                  plot.title = element_text(face = "bold", hjust = 0.5))
+```
+
+# Import & clean the germination data
+
+```{r}
+# Import germination data
+file_path <- paste0(main_dir, "GerminationData.csv")
+germination <- read.csv(file = file_path, sep = ";")
+names(germination)[2] <- "site_name"
+
+# transform NA cover scores to zero
+NA_to_zero <- function(data){
+  data_sub <- data[, 3:8]
+  data_sub[is.na(data_sub)] <- 0
+  data[, 3:8] <- data_sub
+  return(data)
+}
+germination <- NA_to_zero(data = germination)
+germination$netto_weight_rescaled <- scales::rescale(germination$netto_weight, to = c(0.001, 0.999))
+
+# Subset species
+eri_germ <- germination[germination$species == "erigeron", ]
+sol_germ <- germination[germination$species == "solidago", ]
+
+# Load cover data
+file_path <- "D:/Programming/Removal_CH_Analyses/Removal_CH_Manuscript/Data_clean/RemovalData_processed_full.csv"
+cover_full <- read.csv(file = file_path, header = T, stringsAsFactors = T, sep = ",")
+
+# Subset relevant species (Erigeron and Solidago)
+eri_cover <- cover_full[cover_full$species == "erigeron", ]
+sol_cover <- cover_full[cover_full$species == "solidago", ]
+
+# Add count of soil cores (which is a surrogate of area sampled)
+#### ERIGERON ####
+eri_soil_cores <- eri_cover %>% group_by(site_name) %>% count() %>% rename(no_of_plots = n)
+eri_soil_cores$no_of_plots <- eri_soil_cores$no_of_plots / 2
+eri_soil_cores$soil_cores <- 
+  ifelse(eri_soil_cores$no_of_plots == 1, 1,
+         ifelse(eri_soil_cores$no_of_plots == 2, 1,
+                ifelse(eri_soil_cores$no_of_plots == 3, 1,
+                       ifelse(eri_soil_cores$no_of_plots == 4, 2,
+                              ifelse(eri_soil_cores$no_of_plots == 6, 3,
+                                     ifelse(eri_soil_cores$no_of_plots == 8, 4, 5))))))
+eri_soil_cores$soil_cores <- eri_soil_cores$soil_cores * 4
+
+#### SOLIDAGO ####
+sol_soil_cores <- sol_cover %>% group_by(site_name) %>% count() %>% rename(no_of_plots = n)
+sol_soil_cores$no_of_plots <- sol_soil_cores$no_of_plots / 2
+sol_soil_cores$soil_cores <- 
+  ifelse(sol_soil_cores$no_of_plots == 1, 1,
+         ifelse(sol_soil_cores$no_of_plots == 2, 1,
+                ifelse(sol_soil_cores$no_of_plots == 3, 1,
+                       ifelse(sol_soil_cores$no_of_plots == 4, 2,
+                              ifelse(sol_soil_cores$no_of_plots == 6, 3,
+                                     ifelse(sol_soil_cores$no_of_plots == 8, 4, 5))))))
+sol_soil_cores$soil_cores <- sol_soil_cores$soil_cores * 4
+
+# Remove superfluous files
+rm(germination, cover_full) ; gc()
+```
+
+# Calculate mean cover scores for each site and join with germination data
+
+```{r}
+#### Erigeron ####
+eri_cover_2021 <- eri_cover[eri_cover$year == 2021, ]
+eri_cover_2022 <- eri_cover[eri_cover$year == 2022 & eri_cover$treatment == "control", ]
+eri_tot_cover <- rbind(eri_cover_2021, eri_cover_2022)
+eri_mean_cover <- aggregate(eri_tot_cover$cover_focal_sp_percentage, list(eri_tot_cover$site_name), mean, na.rm = T)
+eri_elevation <- aggregate(eri_cover$elevation, list(eri_cover$site_name), mean, na.rm = T)
+eri_mean_cover$elevation <- eri_elevation$x
+names(eri_mean_cover)[1:2] <- c("site_name", "mean_cover")
+
+#### Solidago ####
+sol_cover_2021 <- sol_cover[sol_cover$year == 2021, ]
+sol_cover_2022 <- sol_cover[sol_cover$year == 2022 & sol_cover$treatment == "control", ]
+sol_tot_cover <- rbind(sol_cover_2021, sol_cover_2022)
+sol_mean_cover <- aggregate(sol_tot_cover$cover_focal_sp_percentage, list(sol_tot_cover$site_name), mean, na.rm = T)
+sol_elevation <- aggregate(sol_cover$elevation, list(sol_cover$site_name), mean, na.rm = T)
+sol_mean_cover$elevation <- sol_elevation$x
+names(sol_mean_cover)[1:2] <- c("site_name", "mean_cover")
+
+# Merge with germination data & soil core count
+eri_germ <- left_join(eri_germ, eri_mean_cover, by = "site_name")
+eri_germ <- left_join(eri_germ, eri_soil_cores, by = "site_name")
+sol_germ <- left_join(sol_germ, sol_mean_cover, by = "site_name")
+sol_germ <- left_join(sol_germ, sol_soil_cores, by = "site_name")
+
+# Calculate germination rate per area sampled (AKA germ_rate_area)
+eri_germ$germ_rate_area <- eri_germ$focal_species / eri_germ$soil_cores
+sol_germ$germ_rate_area <- sol_germ$focal_species / sol_germ$soil_cores
+
+# Rescale elevation & mean cover
+eri_germ$elevation_rescaled <- scales::rescale(eri_germ$elevation, to = c(0.001, 0.999))
+sol_germ$elevation_rescaled <- scales::rescale(sol_germ$elevation, to = c(0.001, 0.999))
+eri_germ$mean_cover_rescaled <- scales::rescale(eri_germ$mean_cover, to = c(0.001, 0.999))
+sol_germ$mean_cover_rescaled <- scales::rescale(sol_germ$mean_cover, to = c(0.001, 0.999))
+
+# Transform character variables into factors
+eri_germ$species <- as.factor(eri_germ$species)
+eri_germ$site_name <- as.factor(eri_germ$species)
+sol_germ$species <- as.factor(sol_germ$species)
+sol_germ$site_name <- as.factor(sol_germ$species)
+
+# Remove superfluous files
+rm(eri_cover, eri_mean_cover, sol_cover, sol_mean_cover) ; gc()
+```
+
+# ERIGERON - Final model
+
+```{r}
+# Define model formulas & fit models
+full_formula <- as.formula(focal_species ~ elevation + mean_cover + soil_cores)
+full_formula_poly <- as.formula(focal_species ~ poly(elevation, 2) + mean_cover + soil_cores)
+modNegBin_def <- glm.nb(full_formula, data = eri_germ, control = glm.control(maxit = 100))
+modNegBin_def_poly <- glm.nb(full_formula_poly, data = eri_germ, control = glm.control(maxit = 100))
+
+# Choose better fitting model
+anova(modNegBin_def, modNegBin_def_poly) # Linear is better (p > 0.05)
+
+# Diagnostic plots
+car::residualPlots(modNegBin_def, type = "deviance", pch = 20, smooth = list(col = "red"), tests = F)
+influenceIndexPlot(modNegBin_def, vars = c("Studentized", "hat", "Cook"), id = list(n = c(4)))
+
+# Datapoint #22 looks like an influential outlier to clear out
+modNegBin22 <- update(modNegBin_def, subset = -c(22))
+car::compareCoefs(modNegBin22, modNegBin_def) # Substantial differences in some parameters, we will continue with the model excluding the outlier
+
+# Parameter interpretation
+(resmodNegBin <- round(data.frame(summary(modNegBin22)$coefficients,
+                                  exp.Est = exp(modNegBin22$coefficients),
+                                  perc.Est = (exp(modNegBin22$coefficients) - 1) * 100), digits = 3))
+
+# Checking model assumptions
+simulationOutput <- simulateResiduals(fittedModel = modNegBin22)
+plot(simulationOutput) # No problems detected
+```
+
+# SOLIDAGO - Final model
+
+```{r}
+# Define model formula & fit model
+modNegBin_def <- glm.nb(full_formula, data = sol_germ, control = glm.control(maxit = 100))
+# modNegBin_def_poly <- glm.nb(full_formula_poly, data = sol_germ, control = glm.control(maxit = 300)) 
+# Does not converge, we'll keep the linear model also because of low sample size
+
+# Diagnostic plots
+car::residualPlots(modNegBin_def, type = "deviance", pch = 20, smooth = list(col = "red"), tests = F)
+influenceIndexPlot(modNegBin_def, vars = c("Studentized", "hat", "Cook"), id = list(n = c(4)))
+
+# Parameter interpretation
+(resmodNegBin <- round(data.frame(summary(modNegBin_def)$coefficients,
+                                  exp.Est = exp(modNegBin_def$coefficients),
+                                  perc.Est = (exp(modNegBin_def$coefficients) - 1) * 100), digits = 3))
+
+# Checking model assumptions
+simulationOutput <- simulateResiduals(fittedModel = modNegBin_def)
+plot(simulationOutput) # No problems detected
+```
+
+# Erigeron: Figures for Manuscript, with predicted lines from final NBRM-models
+
+```{r}
+# Fit final model for Erigeron
+full_formula <- as.formula(focal_species ~ elevation + mean_cover + soil_cores)
+modNegBin_eri <- glm.nb(full_formula, data = eri_germ, control = glm.control(maxit = 100))
+modNegBineri_def <- update(modNegBin_eri, subset = -c(22))
+
+# Create data to predict on with final model (both on simulated elevation and simulated cover values)
+elev_range <- seq(min(eri_germ$elevation), max(eri_germ$elevation), length.out = 100)
+cover_range <- seq(min(eri_germ$mean_cover), max(eri_germ$mean_cover), length.out = 100)
+eri_pred_data <- data.frame(soil_cores = mean(eri_germ$soil_cores),
+                            elevation = elev_range,
+                            mean_cover = mean(eri_germ$mean_cover)) 
+eri_pred_data2 <- data.frame(soil_cores = mean(eri_germ$soil_cores),
+                             elevation = mean(eri_germ$elevation),
+                             mean_cover = cover_range) 
+
+# Predict with final model
+eri_pred_data$germination_predicted <- predict(modNegBineri_def, newdata = eri_pred_data, type = "response")
+eri_pred_data2$germination_predicted <- predict(modNegBineri_def, newdata = eri_pred_data2, type = "response")
+
+# Visualize on plots
+(eri_plot_1 <- ggplot(eri_germ[-22,], aes(x = elevation, y = focal_species)) +
+  geom_point(alpha = 0.5) + 
+  geom_line(data = eri_pred_data, aes(x = elevation, y = germination_predicted), color = "black", size = 1) +
+  labs(title = "Germination of Erigeron annuus",
+       x = "Elevation [m]",
+       y = "Number of seedlings"
+  ) + my_theme)
+(eri_plot_2 <- ggplot(eri_germ[-22,], aes(x = mean_cover, y = focal_species)) +
+  geom_point(alpha = 0.5) + 
+  geom_line(data = eri_pred_data2, aes(x = mean_cover, y = germination_predicted), color = "red", size = 1) +
+  labs(title = "Germination of Erigeron annuus",
+       x = "Mean cover [%]",
+       y = "Number of seedlings"
+  ) + my_theme)
+
+# Remove y-axis label from second plot
+eri_plot_2 <- eri_plot_2 + ylab("")
+
+# Arrange plots side-by-side with labels
+(eri_combined_plot <- ggarrange(eri_plot_1, eri_plot_2,
+                                ncol = 2, nrow = 1,
+                                labels = c("a", "b"),
+                                font.label = list(size = 14, face = "bold"),
+                                common.legend = FALSE))
+```
+
+
+# Solidago: Figures for Manuscript, with predicted lines from final NBRM-models
+
+```{r}
+# Fit final model for Erigeron
+full_formula <- as.formula(focal_species ~ elevation + mean_cover + soil_cores)
+modNegBin_sol <- glm.nb(full_formula, data = sol_germ, control = glm.control(maxit = 100))
+
+# Create data to predict on with final model
+elev_range <- seq(min(sol_germ$elevation), max(sol_germ$elevation), length.out = 100)
+cover_range <- seq(min(sol_germ$mean_cover), max(sol_germ$mean_cover), length.out = 100)
+sol_pred_data <- data.frame(soil_cores = mean(sol_germ$soil_cores),
+                            elevation = elev_range,
+                            mean_cover = mean(sol_germ$mean_cover))
+sol_pred_data2 <- data.frame(soil_cores = mean(sol_germ$soil_cores),
+                             elevation = mean(sol_germ$elevation),
+                             mean_cover = cover_range)
+
+# Predict with final model
+sol_pred_data$germination_predicted <- predict(modNegBin_sol, newdata = sol_pred_data, type = "response")
+sol_pred_data2$germination_predicted <- predict(modNegBin_sol, newdata = sol_pred_data2, type = "response")
+
+# Visualize on plot
+(sol_plot_1 <- ggplot(sol_germ, aes(x = elevation, y = focal_species)) +
+  geom_point(alpha = 0.5) + 
+  geom_line(data = sol_pred_data, aes(x = elevation, y = germination_predicted), color = "red", size = 1) +
+  labs(title = "Germination of Solidago canadensis",
+       x = "Elevation [m]",
+       y = "Number of seedlings"
+  ) + my_theme)
+(sol_plot_2 <- ggplot(sol_germ, aes(x = mean_cover, y = focal_species)) +
+  geom_point(alpha = 0.5) + 
+  geom_line(data = sol_pred_data2, aes(x = mean_cover, y = germination_predicted), color = "black", size = 1) +
+  labs(title = "Germination of Solidago canadensis",
+       x = "Mean cover [%]",
+       y = "Number of seedlings"
+  ) + my_theme)
+
+# Remove y-axis label from second plot
+sol_plot_2 <- sol_plot_2 + ylab("")
+
+# Arrange plots side-by-side with labels
+(sol_combined_plot <- ggarrange(sol_plot_1, sol_plot_2,
+                                ncol = 2, nrow = 1,
+                                labels = c("c", "d"),
+                                font.label = list(size = 14, face = "bold"),
+                                common.legend = FALSE))
+```
+
+# Prepare Layout & export figure 5
+
+```{r}
+# Clean up plot labels/titles for consistent layout
+eri_plot_1_clean <- eri_plot_1 + ggtitle("") + xlab("")
+eri_plot_2_clean <- eri_plot_2 + ggtitle("") + xlab("") + ylab("")
+sol_plot_1_clean <- sol_plot_1 + ggtitle("")
+sol_plot_2_clean <- sol_plot_2 + ggtitle("") + ylab("")
+
+# First row (Erigeron)
+top_row <- ggarrange(eri_plot_1_clean, eri_plot_2_clean,
+                     ncol = 2, nrow = 1,
+                     labels = c("a", "b"),
+                     font.label = list(size = 14, face = "bold"),
+                     common.legend = FALSE)
+
+# Second row (Solidago)
+bottom_row <- ggarrange(sol_plot_1_clean, sol_plot_2_clean,
+                        ncol = 2, nrow = 1,
+                        labels = c("c", "d"),
+                        font.label = list(size = 14, face = "bold"),
+                        common.legend = FALSE)
+
+# Combine both rows vertically
+(final_germ_fig <- ggarrange(top_row, bottom_row, ncol = 1, nrow = 2))
+
+# Export high-resolution figure
+Final_germ_plot_name <- "Figures/Fig_5_germination.png"
+ggsave(filename = Final_germ_plot_name, plot = final_germ_fig,
+       dpi = 700, units = "cm", width = 13, height = 13.5)
+```

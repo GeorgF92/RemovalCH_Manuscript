@@ -1,0 +1,465 @@
+---
+title: "01_RemovalExperiment"
+author: "Georg V. Flückiger"
+date: "2025-05-04"
+output: html_document
+---
+
+############################################################
+
+# Purpose
+Analyze species-specific recovery and community-level responses to an invasive plant management experiment along an elevation gradient in the Swiss Alps.
+
+# Description
+This R Markdown document contains the full data processing and statistical analyses for the removal experiment of three nonnative plant species (Erigeron annuus, Solidago canadensis, Lupinus polyphyllus) conducted in 2021 and 2022 across an elevation gradient in the Swiss Alps. The script includes data import, cleaning, transformation of cover scores, and preparation of species-specific datasets for modeling. Subsequent steps involve fitting generalized linear mixed models (GLMMs) using beta-distributed response variables to evaluate the effects of several predictors on the recovery of the focal species as well as of other cover groups recorded in the field.
+
+# Key steps
+- Import and clean raw cover data  
+- Transform cover scores to numeric proportions  
+- Generate rescaled variables for modeling  
+- Subset datasets by focal species  
+- Fit and compare linear and polynomial GLMMs  
+- Perform model diagnostics and interpret outputs  
+- Visualize final results, including scatterplots with predicted lines (Fig. 3)
+
+# Required R packages
+- tidyverse: data wrangling and visualization  
+- glmmTMB: beta regression mixed-effects models  
+- DHARMa: residual diagnostics  
+- car: Type II ANOVA and model summaries  
+- ggpubr, ggsci: publication-quality visualizations
+
+Author: Georg V. Flückiger  
+Last updated: 2025-05-04
+
+############################################################
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Main directory
+main_dir <- "D:/Programming/RemovalCH_Manuscript/RemovalCH_Analyses/Data/"
+
+# Load packages
+library(tidyverse)
+library(viridis)
+library(glmmTMB)
+library(ggpubr)
+library(ggsci)
+library(DHARMa)
+library(MASS)
+library(minqa) 
+
+# Settings
+Sys.setenv(LANG = "en")
+
+# Set ggplot theme
+my_theme <- theme(panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  panel.background = element_rect(fill = "white", color = "black"),
+                  plot.title = element_text(face = "bold", hjust = 0.5),
+                  legend.key=element_blank())
+```
+
+# Import & clean the data
+
+```{r}
+# Load RAW removal data
+removal_data <- read.csv(paste0(main_dir, "/RemovalData_RAW.csv"), 
+                         header = TRUE, sep = ";", stringsAsFactors = T)
+
+# Add rescaled elevation as variable
+removal_data$elevation_rescaled <- scales::rescale(removal_data$elevation, to = c(0.001, 0.999))
+
+# Transform cover scores to percentages, proportions and rescale
+removal_sub <- removal_data[, c(3:4, 6:12)]
+mapping <- list("1" = 0.05, "2" = 0.55, "3" = 3, "4" = 7.5, "5" = 17.5, "6" = 37.5, "7" = 62.5, "8" = 87.5)
+removal_sub <- as.data.frame(apply(removal_sub, c(1,2), function(x) ifelse(x == 0, 0, mapping[x][[1]])))
+removal_sub_prop <- removal_sub / 100
+removal_sub_prop_rescaled <- removal_sub_prop
+removal_sub_prop_rescaled <- as.data.frame(apply(removal_sub_prop_rescaled, 2, function(x) {
+  scales::rescale(x, to = c(0.001, 0.999))}))
+
+# Adjust names
+names(removal_sub) <- paste(names(removal_sub), "percentage", sep = "_")
+names(removal_sub_prop) <- paste(names(removal_sub_prop), "prop", sep = "_")
+names(removal_sub_prop_rescaled) <- paste(names(removal_sub_prop), "rescaled", sep = "_")
+removal_data <- cbind(removal_data, removal_sub, removal_sub_prop, removal_sub_prop_rescaled)
+
+# Create subset of the data by species
+eri_removal <- removal_data[removal_data$species == "erigeron", ]
+sol_removal <- removal_data[removal_data$species == "solidago", ]
+lup_removal <- removal_data[removal_data$species == "lupinus", ]
+
+# Export important files into new directory
+file_name <- "Data/RemovalData_processed_full.csv"
+write.csv(removal_data, file_name)
+
+# Set reference categories
+removal_data$treatment <- relevel(removal_data$treatment, ref = "control")
+removal_data$year <- factor(removal_data$year)
+removal_data$year <- relevel(removal_data$year, ref = "2021")
+
+# Create subset of the data by species
+eri_removal <- removal_data[removal_data$species == "erigeron", ]
+sol_removal <- removal_data[removal_data$species == "solidago", ]
+lup_removal <- removal_data[removal_data$species == "lupinus", ]
+
+# All_species list
+all_species <- list(erigeron = eri_removal, 
+                    solidago = sol_removal, 
+                     lupinus = lup_removal)
+```
+
+################ DATA ANALYSIS #################
+# Mixed Effects Models to study changes in cover of focal species
+
+```{r}
+# Formula to test model assumptions based on DHARMa package
+test_mod_assumptions <- function(model){
+  
+  # Simulate residuals & visualize
+  print(testDispersion(model))
+  hist(resid(model))
+  res  <-  DHARMa::simulateResiduals(model)
+  plot(res, rank = T)
+  
+}
+
+#### Mixed Effects Models to analyze in cover of focal species ####
+# Define Model formulas
+glmmTMB_formula <- as.formula(cover_focal_sp_prop_rescaled ~ year * treatment * elevation_rescaled + 
+                                background_management + (1 | plotID) + (1 | site_name))
+glmmTMB_formula_poly <- as.formula(cover_focal_sp_prop_rescaled ~ year * treatment * poly(elevation_rescaled,2) + 
+                                     background_management + (1 | plotID) + (1 | site_name))
+
+# Fit beta regression models for all species
+eri_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula, data = eri_removal, family = beta_family())
+eri_glmmTMB_poly <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = eri_removal, family = beta_family())
+sol_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula, data = sol_removal, family = beta_family()) 
+sol_glmmTMB_poly <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = sol_removal, family = beta_family()) 
+lup_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula, data = lup_removal, family = beta_family())
+lup_glmmTMB_poly <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = lup_removal, family = beta_family())
+
+# Likelihood Ratio Test (LRT) to check which model fits better
+anova(eri_glmmTMB, eri_glmmTMB_poly) # Linear is better (p > 0.05)
+anova(sol_glmmTMB, sol_glmmTMB_poly) # Linear is better (p > 0.05)
+anova(lup_glmmTMB, lup_glmmTMB_poly) # Polynomial is better (p < 0.05)
+
+# Test model assumptions
+test_mod_assumptions(eri_glmmTMB) 
+test_mod_assumptions(sol_glmmTMB) 
+test_mod_assumptions(lup_glmmTMB_poly) 
+
+# Check Model Summaries and Anova tables
+all_mods <- list(erigeron = eri_glmmTMB, solidago = sol_glmmTMB, lupinus = lup_glmmTMB_poly)
+lapply(all_mods, summary)
+lapply(all_mods, car::Anova)
+```
+
+# Analyses of changes in other cover groups recorded (forbs, graminoids, legumes, bare ground)
+
+```{r}
+# Define simple model formulas
+forbs_formula <- as.formula(forbs_prop_rescaled ~ year * treatment * elevation_rescaled + 
+                              (1 | plotID) + (1 | site_name))
+graminoids_formula <- as.formula(graminoids_prop_rescaled ~ year * treatment * elevation_rescaled + 
+                                   (1 | plotID) + (1 | site_name))
+legumes_formula <- as.formula(legumes_prop_rescaled ~ year * treatment * elevation_rescaled + 
+                                (1 | plotID) + (1 | site_name))
+bare_ground_formula <- as.formula(bare_ground_prop_rescaled ~ year * treatment * elevation_rescaled + 
+                                    (1 | plotID) + (1 | site_name))
+
+# Polynomial models
+forbs_formula_poly <- as.formula(forbs_prop_rescaled ~ year * treatment * poly(elevation_rescaled,2) + 
+                                   (1 | plotID) + (1 | site_name))
+graminoids_formula_poly <- as.formula(graminoids_prop_rescaled ~ year * treatment * poly(elevation_rescaled,2) + 
+                                        (1 | plotID) + (1 | site_name))
+legumes_formula_poly <- as.formula(legumes_prop_rescaled ~ year * treatment * poly(elevation_rescaled,2) + 
+                                     (1 | plotID) + (1 | site_name))
+bare_ground_formula_poly <- as.formula(bare_ground_prop_rescaled ~ year * treatment * poly(elevation_rescaled,2) + 
+                                         (1 | plotID) + (1 | site_name))
+
+#### ERIGERON ####
+# Simple models
+eri_forbs_fit <- glmmTMB::glmmTMB(forbs_formula, data = eri_removal, family = beta_family())
+eri_graminoids_fit <- glmmTMB::glmmTMB(graminoids_formula, data = eri_removal, family = beta_family())
+eri_legumes_fit <- glmmTMB::glmmTMB(legumes_formula, data = eri_removal, family = beta_family())
+eri_bare_ground_fit <- glmmTMB::glmmTMB(bare_ground_formula, data = eri_removal, family = beta_family())
+
+# Polynomial models
+eri_forbs_fit_poly <- glmmTMB::glmmTMB(forbs_formula_poly, data = eri_removal, family = beta_family())
+eri_graminoids_fit_poly <- glmmTMB::glmmTMB(graminoids_formula_poly, data = eri_removal, family = beta_family())
+eri_legumes_fit_poly <- glmmTMB::glmmTMB(legumes_formula_poly, data = eri_removal, family = beta_family())
+eri_bare_ground_fit_poly <- glmmTMB::glmmTMB(bare_ground_formula_poly, data = eri_removal, family = beta_family())
+
+# Likelihood ratio Tests
+anova(eri_forbs_fit, eri_forbs_fit_poly) # Linear is better (p > 0.05)
+anova(eri_graminoids_fit, eri_graminoids_fit_poly) # Linear is better (p > 0.05)
+anova(eri_legumes_fit, eri_legumes_fit_poly) # Linear is better (p > 0.05)
+anova(eri_bare_ground_fit, eri_bare_ground_fit_poly) # Linear is better (p > 0.05)
+
+# Test assumptions, check summary & anova tables of best models
+eri_cover_group_mods <- list(eri_forbs_fit, eri_graminoids_fit, eri_legumes_fit, eri_bare_ground_fit)
+lapply(eri_cover_group_mods, test_mod_assumptions)
+lapply(eri_cover_group_mods, summary)
+lapply(eri_cover_group_mods, car::Anova)
+
+#### SOLIDAGO ####
+# Simple models
+sol_forbs_fit <- glmmTMB::glmmTMB(forbs_formula, data = sol_removal, family = beta_family())
+sol_graminoids_fit <- glmmTMB::glmmTMB(graminoids_formula, data = sol_removal, family = beta_family())
+sol_legumes_fit <- glmmTMB::glmmTMB(legumes_formula, data = sol_removal, family = beta_family())
+sol_bare_ground_fit <- glmmTMB::glmmTMB(bare_ground_formula, data = sol_removal, family = beta_family())
+
+# Polynomial models
+sol_forbs_fit_poly <- glmmTMB::glmmTMB(forbs_formula_poly, data = sol_removal, family = beta_family())
+sol_graminoids_fit_poly <- glmmTMB::glmmTMB(graminoids_formula_poly, data = sol_removal, family = beta_family())
+sol_legumes_fit_poly <- glmmTMB::glmmTMB(legumes_formula_poly, data = sol_removal, family = beta_family())
+sol_bare_ground_fit_poly <- glmmTMB::glmmTMB(bare_ground_formula_poly, data = sol_removal, family = beta_family())
+
+# Likelihood ratio Tests
+anova(sol_forbs_fit, sol_forbs_fit_poly) # Polynomial is better (p < 0.05)
+anova(sol_graminoids_fit, sol_graminoids_fit_poly) # Polynomial is better (p < 0.05)
+anova(sol_legumes_fit, sol_legumes_fit_poly) # Linear is better (p > 0.05)
+anova(sol_bare_ground_fit, sol_bare_ground_fit_poly) # Linear is better (p > 0.05)
+
+# Test assumptions, check summary & anova tables of best models
+sol_cover_group_mods <- list(sol_forbs_fit_poly, sol_graminoids_fit_poly, sol_legumes_fit, sol_bare_ground_fit) 
+lapply(sol_cover_group_mods, test_mod_assumptions)
+lapply(sol_cover_group_mods, summary)
+lapply(sol_cover_group_mods, car::Anova)
+
+#### LUPINUS ####
+# Fit models
+lup_forbs_fit <- glmmTMB::glmmTMB(forbs_formula, data = lup_removal, family = beta_family())
+lup_graminoids_fit <- glmmTMB::glmmTMB(graminoids_formula, data = lup_removal, family = beta_family())
+lup_legumes_fit <- glmmTMB::glmmTMB(legumes_formula, data = lup_removal, family = beta_family())
+lup_bare_ground_fit <- glmmTMB::glmmTMB(bare_ground_formula, data = lup_removal, family = beta_family())
+
+# Polynomial models
+lup_forbs_fit_poly <- glmmTMB::glmmTMB(forbs_formula_poly, data = lup_removal, family = beta_family())
+lup_graminoids_fit_poly <- glmmTMB::glmmTMB(graminoids_formula_poly, data = lup_removal, family = beta_family())
+lup_legumes_fit_poly <- glmmTMB::glmmTMB(legumes_formula_poly, data = lup_removal, family = beta_family())
+lup_bare_ground_fit_poly <- glmmTMB::glmmTMB(bare_ground_formula_poly, data = lup_removal, family = beta_family())
+
+# Likelihood ratio Tests
+anova(lup_forbs_fit, lup_forbs_fit_poly) # Polynomial is better (p < 0.05)
+anova(lup_graminoids_fit, lup_graminoids_fit_poly) # Linear is better (p > 0.05)
+anova(lup_legumes_fit, lup_legumes_fit_poly) # Linear is better (p > 0.05)
+anova(lup_bare_ground_fit, lup_bare_ground_fit_poly) # Linear is better (p > 0.05)
+
+# Test assumptions, check summary & anova tables of best models
+lup_cover_group_mods <- list(lup_forbs_fit_poly, lup_graminoids_fit, lup_legumes_fit, lup_bare_ground_fit)
+lapply(lup_cover_group_mods, test_mod_assumptions)
+lapply(lup_cover_group_mods, summary)
+lapply(lup_cover_group_mods, car::Anova)
+```
+
+################ VISUALIZATIONS #################
+# Fig. 3: Scatterplot with predicted curves (with final models)
+
+```{r}
+# Create datasets
+eri_df <- data.frame(
+  elevation = rep(seq(min(eri_removal$elevation), max(eri_removal$elevation), length.out = 100), 2),
+  year = rep(c("2021", "2022"), each = 100),
+  treatment = rep(c("control", "removal"), each = 1, times = 100))
+sol_df <- data.frame(
+  elevation = rep(seq(min(sol_removal$elevation), max(sol_removal$elevation), length.out = 100), 2),
+  year = rep(c("2021", "2022"), each = 100),
+  treatment = rep(c("control", "removal"), each = 1, times = 100))
+lup_df <- data.frame(
+  elevation = rep(seq(min(lup_removal$elevation), max(lup_removal$elevation), length.out = 100), 2),
+  year = rep(c("2021", "2022"), each = 100),
+  treatment = rep(c("control", "removal"), each = 1, times = 100))
+
+# Define simple model formula and fit models
+glmmTMB_formula <- as.formula(cover_focal_sp_prop_rescaled ~ year * treatment * elevation)
+glmmTMB_formula_poly <- as.formula(cover_focal_sp_prop_rescaled ~ year * treatment * poly(elevation, 2))
+eri_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula, data = eri_removal, family = beta_family())
+sol_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula, data = sol_removal, family = beta_family())
+lup_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = lup_removal, family = beta_family())
+
+# Generate predictions and combine datasets
+eri_pred_df <- eri_df %>% mutate(predicted = predict(eri_glmmTMB, newdata = ., type = "response"))
+sol_pred_df <- sol_df %>% mutate(predicted = predict(sol_glmmTMB, newdata = ., type = "response"))
+lup_pred_df <- lup_df %>% mutate(predicted = predict(lup_glmmTMB, newdata = ., type = "response"))
+# Unscaling function: reverse scales::rescale(to = c(0.001, 0.999))
+rescale_back <- function(scaled_vals, orig_min, orig_max, to = c(0.001, 0.999)) {
+  (scaled_vals - to[1]) / (to[2] - to[1]) * (orig_max - orig_min) + orig_min
+}
+
+# Example: min/max per species
+eri_min <- min(eri_removal$cover_focal_sp_percentage, na.rm = TRUE)
+eri_max <- max(eri_removal$cover_focal_sp_percentage, na.rm = TRUE)
+
+sol_min <- min(sol_removal$cover_focal_sp_percentage, na.rm = TRUE)
+sol_max <- max(sol_removal$cover_focal_sp_percentage, na.rm = TRUE)
+
+lup_min <- min(lup_removal$cover_focal_sp_percentage, na.rm = TRUE)
+lup_max <- max(lup_removal$cover_focal_sp_percentage, na.rm = TRUE)
+
+# Now unscale each prediction block separately
+eri_pred_df$cover_focal_sp_unscaled <- rescale_back(eri_pred_df$predicted, eri_min, eri_max)
+sol_pred_df$cover_focal_sp_unscaled <- rescale_back(sol_pred_df$predicted, sol_min, sol_max)
+lup_pred_df$cover_focal_sp_unscaled <- rescale_back(lup_pred_df$predicted, lup_min, lup_max)
+
+# Combine all predictions into a single dataset for plotting
+all_predictions <- bind_rows(eri_pred_df %>% mutate(species = "erigeron"),
+                             sol_pred_df %>% mutate(species = "solidago"),
+                             lup_pred_df %>% mutate(species = "lupinus"))
+
+# Tidy up treatment factor
+all_predictions$treatment <- dplyr::recode(all_predictions$treatment,
+                                           "control" = "Control",
+                                           "removal" = "Removal")
+
+# Set variables as factor
+all_predictions$treatment <- factor(all_predictions$treatment)
+all_predictions$year <- factor(all_predictions$year)
+all_predictions$species <- factor(all_predictions$species)
+
+# Subset predictions by species
+eri_pred_df_def <- all_predictions[all_predictions$species == "erigeron", ]
+sol_pred_df_def <- all_predictions[all_predictions$species == "solidago", ]
+lup_pred_df_def <- all_predictions[all_predictions$species == "lupinus", ]
+
+# Factor formatting for observed data
+eri_removal$treatment <- factor(eri_removal$treatment, levels = c("control", "removal"),
+                                labels = c("Control", "Removal"))
+sol_removal$treatment <- factor(sol_removal$treatment, levels = c("control", "removal"),
+                                labels = c("Control", "Removal"))
+lup_removal$treatment <- factor(lup_removal$treatment, levels = c("control", "removal"),
+                                labels = c("Control", "Removal"))
+
+# Create ggplots with real model predictions
+(eri_plot <- ggplot(eri_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
+  geom_point(data = eri_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  ggtitle("Erigeron annuus") +
+  facet_wrap(~ year, ncol = 1) +
+  scale_color_viridis_d() +
+  labs(x = "", y = "Cover [%]", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = c(0, 17.5, 37.5, 62.5, 87.5)))
+
+(sol_plot <- ggplot(sol_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
+  geom_point(data = sol_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  ggtitle("Solidago canadensis") +
+  facet_wrap(~ year, ncol = 1) +
+  scale_color_viridis_d() +
+  labs(x = "Elevation [m]", y = "", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = c(0, 17.5, 37.5, 62.5, 87.5)))
+
+(lup_plot <- ggplot(lup_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
+  geom_point(data = lup_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  ggtitle("Lupinus polyphyllus") +
+  facet_wrap(~ year, ncol = 1) +
+  scale_color_viridis_d() +
+  labs(x = "", y = "", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = c(0, 17.5, 37.5, 62.5, 87.5)))
+
+# Arrange all plots together
+(all_cover_scatterplots <- ggpubr::ggarrange(eri_plot, sol_plot, lup_plot,
+                                             ncol = 3, nrow = 1,
+                                             common.legend = TRUE, 
+                                             legend = "top",
+                                             labels = c("a", "b", "c"), 
+                                             hjust = -1,
+                                             font.label = list(size = 16, color = "black")))
+
+# Export figure
+ggsave(filename = "Figures/Fig_3_CoverVsElevation.png", dpi = 700, units = "cm", height = 15, width = 21)
+```
+
+# Calculate mean cover (preparation for Fig. 4)
+
+```{r}
+# Calculate mean with tapply & store in nice dataframes
+my_rownames <- c("control2021", "control2022", "removal2021", "removal2022")
+focal_df <- as.data.frame(sapply(all_species, function(data){tapply(data[, "cover_focal_sp_percentage"], 
+                                                             list(data$year, data$treatment), mean, na.rm = T)}),
+                          row.names = paste0("focal_sp_", my_rownames))
+forbs_df <- as.data.frame(sapply(all_species, function(data){tapply(data[, "forbs_percentage"],
+                                                             list(data$year, data$treatment), mean, na.rm = T)}),
+                          row.names = paste0("forbs_", my_rownames))
+grami_df <- as.data.frame(sapply(all_species, function(data){tapply(data[, "graminoids_percentage"],                                                                          list(data$year, data$treatment), mean, na.rm = T)}),
+                          row.names = paste0("graminoids_", my_rownames))
+legum_df <- as.data.frame(sapply(all_species, function(data){tapply(data[, "legumes_percentage"], 
+                                                             list(data$year, data$treatment), mean, na.rm = T)}),
+                          row.names = paste0("legumes_", my_rownames))
+bareG_df <- as.data.frame(sapply(all_species, function(data){tapply(data[, "bare_ground_percentage"],
+                                                             list(data$year, data$treatment), mean, na.rm = T)}),
+                          row.names = paste0("bare_ground_", my_rownames))
+
+# Join into one single dataframe and add relevant columns for plotting
+mean_cover_df <- rbind(focal_df, forbs_df, grami_df, legum_df, bareG_df)
+mean_cover_df$func_group <- c(rep("focal_sp", 4), rep("forbs", 4), rep("graminoids", 4), rep("legumes", 4), 
+                              rep("bare_ground", 4))
+mean_cover_df$treatment <- as.factor(rep(c(rep("Control", 2), rep("Removal", 2)), 5))
+mean_cover_df$year <- as.factor(rep(c("2021", "2022"), 10))
+rm(focal_df, forbs_df, grami_df, legum_df, bareG_df) ; gc()
+
+# Reorder factor level of variable functional group
+mean_cover_df <- mean_cover_df %>%
+  mutate(func_group = fct_relevel(func_group, "focal_sp", "forbs", "graminoids", "legumes", "bare_ground"))
+
+# Pivot dataframe to get it in long format & subset dfs for single species
+mean_cover_df <- mean_cover_df %>% pivot_longer(c(erigeron, solidago, lupinus), values_to = "cover", 
+                                                names_to = "species")
+eri_mean_cover <- mean_cover_df %>% filter(species == "erigeron")
+sol_mean_cover <- mean_cover_df %>% filter(species == "solidago")
+lup_mean_cover <- mean_cover_df %>% filter(species == "lupinus")
+
+# Rename factor levels and re-subset sp. specific dataframes
+levels(mean_cover_df$func_group) <- c("Focal species", "Forbs", "Graminoids", "Legumes", "Bare ground")
+eri_mean_cover <- mean_cover_df %>% filter(species == "erigeron")
+sol_mean_cover <- mean_cover_df %>% filter(species == "solidago")
+lup_mean_cover <- mean_cover_df %>% filter(species == "lupinus")
+```
+
+# Fig. 4: Slopegraphs
+
+```{r}
+# Slopegraph function
+cover_slopegraph <- function(data, title, ylab, xlab){ 
+  
+  ggplot(data, aes(x = year, y = cover, color = func_group)) + 
+    ggtitle(title) + xlab(xlab) + ylab(ylab) +
+    geom_line(data = filter(data, data$treatment == "Control"), 
+              aes(group = func_group, linetype = treatment), 
+              size = 0.7) +
+    geom_line(data = filter(data, data$treatment == "Removal"), 
+              aes(group = func_group, linetype = treatment), 
+              size = 0.7) +
+    geom_point(data = filter(data, data$treatment == "Control"), 
+               aes(group = func_group, shape = treatment), 
+               size = 2) +
+    geom_point(data = filter(data, data$treatment == "Removal"), 
+               aes(group = func_group, shape = treatment), 
+               size = 2) + 
+    labs(color = "Functional Group", linetype = "Treatment", shape = "Treatment") +
+    my_theme + ggsci::scale_color_startrek()
+
+} 
+
+# Visualize
+eri_slope2 <- cover_slopegraph(eri_mean_cover, title = "Erigeron annuus", ylab = "Cover [%]", xlab = "") +
+  theme(legend.position = "none") 
+sol_slope2 <- cover_slopegraph(sol_mean_cover, title = "Solidago canadensis", ylab = "", xlab = "Year") +
+  theme(legend.position = "none") 
+lup_slope2 <- cover_slopegraph(lup_mean_cover, title = "Lupinus polyphyllus", ylab = "", xlab = "") +
+  labs(color = "Functional group")
+(multi_slopegraph <- ggpubr::ggarrange(eri_slope2, sol_slope2, lup_slope2,
+                                          ncol=3, nrow=1, common.legend = TRUE, legend="right", 
+                                          labels = c("a", "b", "c"), hjust = -1,
+                                          font.label = list(size = 16, color = "black")))
+# Export in HQ
+ggsave(filename = "Figures/Fig_4_multi_funcGroup_slopegraph.png", dpi = 700, units = "cm", height = 12.8, 
+       width = 21.5, plot = multi_slopegraph)
+```
