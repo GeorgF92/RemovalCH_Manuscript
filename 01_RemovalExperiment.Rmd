@@ -391,6 +391,149 @@ eri_breaks_fun <- function(lims) {
 ggsave(filename = "Figures/Fig_3_CoverVsElevation.png", dpi = 700, units = "cm", height = 15, width = 21)
 ```
 
+# Second version of figure 2 - STILL TO DEBUG
+
+```{r}
+# Ensure cover_class exists in all datasets
+class_midpoints <- c(0, 0.05, 0.55, 3, 7.5, 17.5, 37.5, 62.5, 87.5)
+allowed_mids    <- class_midpoints
+
+# Map % (midpoints) to nearest class index 0-8
+to_class <- function(pct) {
+  idx <- vapply(pct, function(x) which.min(abs(allowed_mids - x)), integer(1))
+  idx - 1L
+}
+
+# Add cover_class to each dataset if missing
+for (d in c("eri_removal", "sol_removal", "lup_removal")) {
+  if (!exists(d)) stop(paste("Dataframe", d, "does not exist yet!"))
+  dat <- get(d)
+  if (!("cover_focal_sp_percentage" %in% names(dat))) {
+    stop(paste("cover_focal_sp_percentage not found in", d))
+  }
+  dat$cover_class <- to_class(dat$cover_focal_sp_percentage)
+  assign(d, dat, envir = .GlobalEnv)
+}
+
+# Prediction grids
+eri_df <- data.frame(
+  elevation = rep(seq(min(eri_removal$elevation), max(eri_removal$elevation), length.out = 100), 2),
+  year       = rep(c("2021","2022"), each = 100),
+  treatment  = rep(c("control","removal"), each = 1, times = 100)
+)
+sol_df <- data.frame(
+  elevation = rep(seq(min(sol_removal$elevation), max(sol_removal$elevation), length.out = 100), 2),
+  year       = rep(c("2021","2022"), each = 100),
+  treatment  = rep(c("control","removal"), each = 1, times = 100)
+)
+lup_df <- data.frame(
+  elevation = rep(seq(min(lup_removal$elevation), max(lup_removal$elevation), length.out = 100), 2),
+  year       = rep(c("2021","2022"), each = 100),
+  treatment  = rep(c("control","removal"), each = 1, times = 100)
+)
+
+# Match factor structures to training data before prediction
+eri_df$year      <- factor(eri_df$year, levels = levels(eri_removal$year))
+eri_df$treatment <- factor(eri_df$treatment, levels = levels(eri_removal$treatment))
+
+sol_df$year      <- factor(sol_df$year, levels = levels(sol_removal$year))
+sol_df$treatment <- factor(sol_df$treatment, levels = levels(sol_removal$treatment))
+
+lup_df$year      <- factor(lup_df$year, levels = levels(lup_removal$year))
+lup_df$treatment <- factor(lup_df$treatment, levels = levels(lup_removal$treatment))
+
+# Fit GLMMTMB models on the % scale
+glmmTMB_formula      <- cover_focal_sp_prop_rescaled ~ year * treatment * elevation
+glmmTMB_formula_poly <- cover_focal_sp_prop_rescaled ~ year * treatment * poly(elevation, 2)
+
+eri_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula,      data = eri_removal, family = beta_family())
+sol_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula,      data = sol_removal, family = beta_family())
+lup_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = lup_removal, family = beta_family())
+
+# Predict % from models, then map to class scale for plotting
+# Reverse of scales::rescale(to = c(0.001, 0.999))
+rescale_back <- function(scaled_vals, orig_min, orig_max, to = c(0.001, 0.999)) {
+  (scaled_vals - to[1]) / (to[2] - to[1]) * (orig_max - orig_min) + orig_min
+}
+
+eri_min <- min(eri_removal$cover_focal_sp_percentage, na.rm = TRUE)
+eri_max <- max(eri_removal$cover_focal_sp_percentage, na.rm = TRUE)
+sol_min <- min(sol_removal$cover_focal_sp_percentage, na.rm = TRUE)
+sol_max <- max(sol_removal$cover_focal_sp_percentage, na.rm = TRUE)
+lup_min <- min(lup_removal$cover_focal_sp_percentage, na.rm = TRUE)
+lup_max <- max(lup_removal$cover_focal_sp_percentage, na.rm = TRUE)
+
+# Predicted % (unscaled) -> class index (0-8)
+eri_df$pred_pct   <- rescale_back(predict(eri_glmmTMB, newdata = eri_df, type = "response"), eri_min, eri_max)
+sol_df$pred_pct   <- rescale_back(predict(sol_glmmTMB, newdata = sol_df, type = "response"), sol_min, sol_max)
+lup_df$pred_pct   <- rescale_back(predict(lup_glmmTMB, newdata = lup_df, type = "response"), lup_min, lup_max)
+
+eri_df$pred_class <- to_class(eri_df$pred_pct)
+sol_df$pred_class <- to_class(sol_df$pred_pct)
+lup_df$pred_class <- to_class(lup_df$pred_pct)
+
+# Factor formatting for observed data
+lab_treat <- c(control = "Control", removal = "Removal")
+for (d in c("eri_removal","sol_removal","lup_removal")) {
+  dat <- get(d)
+  dat$treatment <- factor(dat$treatment, levels = c("control","removal"), labels = lab_treat)
+  assign(d, dat)
+}
+eri_df$treatment <- factor(eri_df$treatment, levels = names(lab_treat), labels = lab_treat)
+sol_df$treatment <- factor(sol_df$treatment, levels = names(lab_treat), labels = lab_treat)
+lup_df$treatment <- factor(lup_df$treatment, levels = names(lab_treat), labels = lab_treat)
+
+# Y-axis: equidistant classes 0-8, labels are % midpoints
+y_breaks_classes <- 0:8
+y_labels_pct     <- format(class_midpoints, trim = TRUE)
+
+# Plots
+(eri_plot <- ggplot(eri_df, aes(x = elevation, y = pred_class, color = treatment)) +
+  geom_point(data = eri_removal,
+             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  labs(title = expression(italic(Erigeron~annuus))) +
+  facet_wrap(~ year, ncol = 1, scales = "free_y") +
+  scale_color_viridis_d() +
+  labs(x = "", y = "Cover [%]", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+
+(sol_plot <- ggplot(sol_df, aes(x = elevation, y = pred_class, color = treatment)) +
+  geom_point(data = sol_removal,
+             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  labs(title = expression(italic(Solidago~canadensis))) +
+  facet_wrap(~ year, ncol = 1) +
+  scale_color_viridis_d() +
+  labs(x = "Elevation [m]", y = "", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+
+(lup_plot <- ggplot(lup_df, aes(x = elevation, y = pred_class, color = treatment)) +
+  geom_point(data = lup_removal,
+             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
+  geom_line(size = 1) +
+  labs(title = expression(italic(Lupinus~polyphyllus))) +
+  facet_wrap(~ year, ncol = 1) +
+  scale_color_viridis_d() +
+  labs(x = "", y = "", color = "Treatment") +
+  my_theme +
+  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+
+# Layout plots together
+(all_cover_scatterplots_v2 <- ggpubr::ggarrange(
+  eri_plot, sol_plot, lup_plot,
+  ncol = 3, nrow = 1, common.legend = TRUE, legend = "top",
+  labels = c("a","b","c"), hjust = -1,
+  font.label = list(size = 16, color = "black"))
+)
+
+# Export
+ggsave("Figures/Fig_3_CoverVsElevation_V2.png",
+       dpi = 700, units = "cm", height = 15, width = 21)
+```
+
 # Calculate mean cover (preparation for Fig. 4)
 
 ```{r}
