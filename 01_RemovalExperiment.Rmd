@@ -49,6 +49,9 @@ library(ggsci)
 library(DHARMa)
 library(MASS)
 library(minqa) 
+library(dplyr)
+library(tidyr)
+library(forcats)
 
 # Settings
 Sys.setenv(LANG = "en")
@@ -587,7 +590,8 @@ lup_mean_cover <- mean_cover_df %>% filter(species == "lupinus")
 cover_slopegraph <- function(data, title, ylab, xlab){ 
   
   ggplot(data, aes(x = year, y = cover, color = func_group)) + 
-    ggtitle(title) + xlab(xlab) + ylab(ylab) +
+    ggtitle(bquote(italic(.(title)))) +        
+    xlab(xlab) + ylab(ylab) +
     geom_line(data = filter(data, data$treatment == "Control"), 
               aes(group = func_group, linetype = treatment), 
               size = 0.7) +
@@ -620,3 +624,100 @@ lup_slope2 <- cover_slopegraph(lup_mean_cover, title = "Lupinus polyphyllus", yl
 ggsave(filename = "Figures/Fig_4_multi_funcGroup_slopegraph.png", dpi = 700, units = "cm", height = 12.8, 
        width = 21.5, plot = multi_slopegraph)
 ```
+
+# Preparative steps for fig.4 with error bars 
+
+```{r}
+# --- Tidy the raw data for all species (assumes 'all_species' is a named list: erigeron, solidago, lupinus) ---
+make_long <- function(dat, sp_name){
+  dat %>%
+    transmute(
+      species   = sp_name,
+      year      = factor(year, levels = c("2021","2022")),
+      treatment = factor(treatment, levels = c("control","removal"),
+                         labels = c("Control","Removal")),
+      `Focal species` = cover_focal_sp_percentage,
+      Forbs      = forbs_percentage,
+      Graminoids = graminoids_percentage,
+      Legumes    = legumes_percentage,
+      `Bare ground` = bare_ground_percentage
+    ) %>%
+    pivot_longer(cols = c(`Focal species`, Forbs, Graminoids, Legumes, `Bare ground`),
+                 names_to = "func_group", values_to = "cover")
+}
+
+cover_long <- bind_rows(
+  make_long(all_species$erigeron, "erigeron"),
+  make_long(all_species$solidago, "solidago"),
+  make_long(all_species$lupinus,  "lupinus")
+)
+
+# Summary stats per panel element
+sum_cover <- cover_long %>%
+  group_by(species, func_group, year, treatment) %>%
+  summarise(
+    n    = sum(!is.na(cover)),
+    mean = mean(cover, na.rm = TRUE),
+    sd   = sd(cover, na.rm = TRUE),
+    se   = sd / sqrt(n),
+    ci   = 1.96 * se,
+    .groups = "drop"
+  )
+
+# split by species (to reuse your plotting layout)
+eri_sum <- filter(sum_cover, species == "erigeron")
+sol_sum <- filter(sum_cover, species == "solidago")
+lup_sum <- filter(sum_cover, species == "lupinus")
+```
+
+# V2 of Fig. 4 - for supplementary materials
+
+```{r}
+# small horizontal dodge
+pd <- position_dodge(width = 0.35)
+
+# Define new slopegraph function
+cover_slopegraph_ci <- function(data, title, ylab, xlab){
+  ggplot(
+    data,
+    aes(x = year, y = mean, color = func_group,
+        group = interaction(func_group, treatment),
+        linetype = treatment, shape = treatment)
+  ) +
+    ggtitle(title) + xlab(xlab) + ylab(ylab) +
+    # lines (dodged)
+    geom_line(position = pd, linewidth = 0.7) +
+    # points (dodged)
+    geom_point(position = pd, size = 2) +
+    # error bars (95% CI), dodged to match points/lines
+    geom_errorbar(aes(ymin = mean - ci, ymax = mean + ci),
+                  width = 0.1, position = pd, linewidth = 0.6) +
+    labs(color = "Functional Group", linetype = "Treatment", shape = "Treatment") +
+    my_theme +
+    ggsci::scale_color_startrek()
+}
+
+# build panels (italic titles if you like)
+eri_slope_ci <- cover_slopegraph_ci(eri_sum, title = expression(italic(Erigeron~annuus)),
+                                    ylab = "Cover [%]", xlab = "")
+sol_slope_ci <- cover_slopegraph_ci(sol_sum, title = expression(italic(Solidago~canadensis)),
+                                    ylab = "", xlab = "Year")
+lup_slope_ci <- cover_slopegraph_ci(lup_sum, title = expression(italic(Lupinus~polyphyllus)),
+                                    ylab = "", xlab = "")
+
+# Layout plots together
+multi_slopegraph_ci <- ggpubr::ggarrange(
+  eri_slope_ci + theme(legend.position = "none"),
+  sol_slope_ci + theme(legend.position = "none"),
+  lup_slope_ci + labs(color = "Functional Group"),
+  ncol = 3, nrow = 1, common.legend = TRUE, legend = "right",
+  labels = c("a","b","c"), hjust = -1,
+  font.label = list(size = 16, color = "black")
+)
+
+# Export
+ggsave("Figures/Fig_4_multi_funcGroup_slopegraph_V2.png",
+       plot = multi_slopegraph_ci, dpi = 700, units = "cm",
+       height = 12.8, width = 21.5)
+```
+
