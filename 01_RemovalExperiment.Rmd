@@ -30,7 +30,7 @@ This R Markdown document contains the full data processing and statistical analy
 - ggpubr, ggsci: publication-quality visualizations
 
 Author: Georg V. Flückiger  
-Last updated: 2025-05-04
+Last updated: 2025-08-10
 
 ############################################################
 
@@ -333,21 +333,35 @@ sol_removal$treatment <- factor(sol_removal$treatment, levels = c("control", "re
 lup_removal$treatment <- factor(lup_removal$treatment, levels = c("control", "removal"),
                                 labels = c("Control", "Removal"))
 
+# Breaks for Erigeron based on actual cover classes, but keep min. and any values above 2.5% threshold
+eri_breaks_raw <- sort(unique(eri_removal$cover_focal_sp_percentage))
+eri_breaks <- c(min(eri_breaks_raw), eri_breaks_raw[eri_breaks_raw > 2.5])
+
+# Raw Erigeron cover classes
+eri_breaks_raw <- sort(unique(eri_removal$cover_focal_sp_percentage))
+
+# Facet-aware breaks: keep min (e.g., 0) + values > 2.5%; drop "3" only in the tall (2021) panel
+eri_breaks_fun <- function(lims) {
+  b <- c(min(eri_breaks_raw), eri_breaks_raw[eri_breaks_raw > 2.5])
+  if (max(lims) > 20) b <- b[b != 3]   # drop 3 only when the panel has a large y-range (2021)
+  b[b >= lims[1] & b <= lims[2]]
+}
+
 # Create ggplots with real model predictions
 (eri_plot <- ggplot(eri_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
   geom_point(data = eri_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
   geom_line(size = 1) +
-  ggtitle("Erigeron annuus") +
-  facet_wrap(~ year, ncol = 1) +
+  labs(title = expression(italic(Erigeron~annuus))) +
+  facet_wrap(~ year, ncol = 1, scales = "free_y") +
   scale_color_viridis_d() +
   labs(x = "", y = "Cover [%]", color = "Treatment") +
   my_theme +
-  scale_y_continuous(breaks = c(0, 17.5, 37.5, 62.5, 87.5)))
-
+  scale_y_continuous(breaks = eri_breaks_fun))
+                                                          
 (sol_plot <- ggplot(sol_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
   geom_point(data = sol_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
   geom_line(size = 1) +
-  ggtitle("Solidago canadensis") +
+  labs(title = expression(italic(Solidago~canadensis))) +   
   facet_wrap(~ year, ncol = 1) +
   scale_color_viridis_d() +
   labs(x = "Elevation [m]", y = "", color = "Treatment") +
@@ -357,7 +371,7 @@ lup_removal$treatment <- factor(lup_removal$treatment, levels = c("control", "re
 (lup_plot <- ggplot(lup_pred_df_def, aes(x = elevation, y = cover_focal_sp_unscaled, color = treatment)) +
   geom_point(data = lup_removal, aes(x = elevation, y = cover_focal_sp_percentage, color = treatment), alpha = 0.5) +
   geom_line(size = 1) +
-  ggtitle("Lupinus polyphyllus") +
+  labs(title = expression(italic(Lupinus~polyphyllus))) +  
   facet_wrap(~ year, ncol = 1) +
   scale_color_viridis_d() +
   labs(x = "", y = "", color = "Treatment") +
