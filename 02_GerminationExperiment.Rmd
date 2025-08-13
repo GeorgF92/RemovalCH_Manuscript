@@ -29,7 +29,7 @@ germination experiment. It links seedling emergence to site-level environmental 
  - DHARMa: residual diagnostics
 
 Author: Georg V. Flückiger  
-Last updated: 2025-05-04
+Last updated: 2025-08-10
 
 ############################################################
 
@@ -343,4 +343,80 @@ bottom_row <- ggarrange(sol_plot_1_clean, sol_plot_2_clean,
 Final_germ_plot_name <- "Figures/Fig_5_germination.png"
 ggsave(filename = Final_germ_plot_name, plot = final_germ_fig,
        dpi = 700, units = "cm", width = 13, height = 13.5)
+```
+
+Visualize total emergence VS. elevation
+
+```{r}
+# Visualize total emergence VS. elevation with conditional line color and italic titles
+# Theme for plots
+my_theme <- theme(panel.grid.major = element_blank(), 
+                  panel.grid.minor = element_blank(),
+                  panel.background = element_rect(fill = "white", color = "black"),
+                  plot.title = element_text(face = "italic", hjust = 0.5))
+
+# Erigeron annuus
+# Fit model
+mod_nb_eri <- glm.nb(total_germinated ~ elevation, data = eri_germ, control = glm.control(maxit = 100))
+
+# Display model summary to check p-value
+summary(mod_nb_eri)
+
+# Extract p-value for elevation
+p_eri <- summary(mod_nb_eri)$coefficients["elevation", "Pr(>|z|)"]
+
+# Conditional line color
+line_color_eri <- ifelse(p_eri < 0.05, "red", "black")
+
+# Create prediction data
+elev_seq_eri <- seq(min(eri_germ$elevation), max(eri_germ$elevation), length.out = 100)
+pred_eri <- data.frame(elevation = elev_seq_eri)
+pred_eri$germ_pred <- predict(mod_nb_eri, newdata = pred_eri, type = "response")
+
+# Plot
+plot_eri <- ggplot(eri_germ, aes(x = elevation, y = total_germinated)) +
+  geom_point(alpha = 0.6) +
+  geom_line(data = pred_eri, aes(x = elevation, y = germ_pred), color = line_color_eri, size = 1) +  # CHANGED: uses conditional color
+  labs(title = "Erigeron annuus",  # Title now italicized via theme
+       x = "Elevation [m]",
+       y = "Number of seedlings") +
+  my_theme
+
+# Solidago canadensis
+# Fit model
+mod_nb_sol <- glm.nb(total_germinated ~ elevation, data = sol_germ, control = glm.control(maxit = 100))
+
+# Display model summary to check p-value
+summary(mod_nb_sol) 
+
+# Extract p-value for elevation
+p_sol <- summary(mod_nb_sol)$coefficients["elevation", "Pr(>|z|)"]
+
+# Conditional line color
+line_color_sol <- ifelse(p_sol < 0.05, "red", "black")
+
+# Create prediction data
+elev_seq_sol <- seq(min(sol_germ$elevation), max(sol_germ$elevation), length.out = 100)
+pred_sol <- data.frame(elevation = elev_seq_sol)
+pred_sol$germ_pred <- predict(mod_nb_sol, newdata = pred_sol, type = "response")
+
+# Plot
+plot_sol <- ggplot(sol_germ, aes(x = elevation, y = total_germinated)) +
+  geom_point(alpha = 0.6) +
+  geom_line(data = pred_sol, aes(x = elevation, y = germ_pred), color = line_color_sol, size = 1) +  # CHANGED: uses conditional color
+  labs(title = "Solidago canadensis",  # Title now italicized via theme
+       x = "Elevation [m]",
+       y = "") + 
+  my_theme
+
+# Combine both plots
+combined_plot <- ggarrange(plot_eri, plot_sol,
+                           ncol = 2, nrow = 1,
+                           labels = c("a", "b"),
+                           font.label = list(size = 14, face = "bold"),
+                           common.legend = FALSE)
+
+# Export
+ggsave("Figures/Fig_Sx_TotalGermination_VS_Elevation.png", 
+       combined_plot, width = 14, height = 7, units = "cm", dpi = 600)
 ```
