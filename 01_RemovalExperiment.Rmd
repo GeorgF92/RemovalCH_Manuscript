@@ -876,7 +876,7 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
     }
   } +
 
-  # theme: classic base, add full panel border and grey facet strip
+  # Add panel border
   theme_classic(base_size = 12) +
     theme(axis.line = element_blank(), 
           panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
@@ -889,3 +889,64 @@ ggsave("Figures/Fig_Sx_DeltaCover_ViolinJitter.png",
        p_delta, width = 21, height = 8, units = "cm", dpi = 600)
 ```
 
+Add correlation matrix between variables
+
+```{r}
+# Correlation Matrix with Raster Values
+# Load required libraries
+library(terra)      
+library(corrplot)   
+
+# Subset site coordinates and site name from full dataset
+sites <- removal_data %>%
+  dplyr::select(site_name, longitude, latitude, northing, easting, elevation) %>%
+  dplyr::distinct(site_name, .keep_all = TRUE)
+
+# Convert to spatial points (SpatVector)
+sites_vect <- vect(sites, geom = c("longitude", "latitude"), crs = "EPSG:4326")
+
+# Load raster layers and extract values
+# Load rasters
+r_precip <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio18_25.rds")
+r_temp   <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio1_25.rds")
+r_pop    <- readRDS("Data/ch_popdensity_statpop13_pixel_populationdensity.rds")
+r_gdd    <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_gdd5.rds")
+
+# Convert to SpatRaster
+r_precip <- rast(r_precip)
+r_temp   <- rast(r_temp)
+r_pop    <- rast(r_pop)
+r_gdd    <- rast(r_gdd)
+
+# Extract raster values for each site point
+sites$precip      <- terra::extract(r_precip, sites_vect)[,2]
+sites$temp        <- terra::extract(r_temp,   sites_vect)[,2]
+sites$pop_density <- terra::extract(r_pop,    sites_vect)[,2]
+sites$gdd         <- terra::extract(r_gdd,    sites_vect)[,2]
+
+# Clean memory (large rasters)
+rm(r_precip, r_temp, r_pop, r_gdd); gc()
+
+# Prepare correlation matrix
+env_df <- sites %>%
+  dplyr::select(elevation, precip, temp, pop_density, gdd) %>%
+  na.omit()
+
+# Rename for readability
+colnames(env_df) <- c("Elevation [m]", "Precipitation", "Temperature", "Pop. Density", "Growing Degree Days (GDD)")
+
+# Compute Pearson correlation
+cor_mat <- cor(env_df, method = "pearson")
+
+# Plot correlation heatmap (upper triangle)
+corrplot(cor_mat,
+         method = "color",                          
+         type = "upper",                            
+         addCoef.col = "black",                     
+         tl.col = "black",                         
+         tl.cex = 1.1,                              
+         number.cex = 0.9,                          
+         col = colorRampPalette(c("darkblue", "white", "darkred"))(200),
+         diag = FALSE                               
+)
+```

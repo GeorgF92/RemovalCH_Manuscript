@@ -49,3 +49,7 @@ po/*~
 rsconnect/
 Figures/Fig_Sx_DeltaCover_BoxViolin.png
 Data/ch_popdensity_statpop13_pixel_populationdensity.rds
+Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio12_25.rds
+Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio18_25.rds
+Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio1_25.rds
+Data/ch_bioclim_chclim25_present_pixel_1981_2010_gdd5.rds
