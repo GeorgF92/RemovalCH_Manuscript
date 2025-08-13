@@ -48,3 +48,4 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 Figures/Fig_Sx_DeltaCover_BoxViolin.png
+Data/ch_popdensity_statpop13_pixel_populationdensity.rds

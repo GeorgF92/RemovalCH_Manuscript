@@ -205,6 +205,25 @@ test_mod_assumptions(sol_glmmTMB_simple)
 test_mod_assumptions(lup_glmmTMB_poly_simple)
 ```
 
+Test wether there are baseline differences among plots before applying removal treatment
+
+```{r}
+# Erigeron annuus
+lm_eri <- lm(cover_focal_sp_percentage ~ treatment,
+             data = filter(eri_removal, year == 2021))
+summary(lm_eri)
+
+# Solidago canadensis
+lm_sol <- lm(cover_focal_sp_percentage ~ treatment,
+             data = filter(sol_removal, year == 2021))
+summary(lm_sol)
+
+# Lupinus polyphyllus
+lm_lup <- lm(cover_focal_sp_percentage ~ treatment,
+             data = filter(lup_removal, year == 2021))
+summary(lm_lup)
+```
+
 # Analyses of changes in other cover groups recorded (forbs, graminoids, legumes, bare ground)
 
 ```{r}
@@ -777,7 +796,7 @@ delta_by_plot <- function(df, sp_name){
     dplyr::mutate(year = as.character(year)) %>%
     dplyr::select(
       dplyr::any_of(c("plotID","treatment","year","cover_focal_sp_percentage")),
-      tidyselect::all_of(elev_col)                  # 0 or 1 column, OK
+      tidyselect::all_of(elev_col)              
     )
 
   # ensure we have elev_m
@@ -825,11 +844,11 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
     if (color_by_elev) {
       geom_point(aes(color = elev_m),
                  position = position_jitter(width = 0.25, height = 0),
-                 alpha = 0.45, size = 2.2, show.legend = TRUE)
+                 alpha = 0.55, size = 2.2, show.legend = TRUE)
     } else {
       geom_point(aes(color = treatment),
                  position = position_jitter(width = 0.25, height = 0),
-                 alpha = 0.45, size = 2.2, show.legend = FALSE)
+                 alpha = 0.55, size = 2.2, show.legend = FALSE)
     }
   } +
 
@@ -859,12 +878,11 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
 
   # theme: classic base, add full panel border and grey facet strip
   theme_classic(base_size = 12) +
-  theme(
-    panel.border   = element_rect(color = "black", fill = NA, linewidth = 0.6),
-    strip.background = element_rect(fill = "grey85", color = NA),
-    strip.text     = element_text(face = "italic"),
-    legend.position = if (color_by_elev) "right" else "none"
-  )
+    theme(axis.line = element_blank(), 
+          panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+          strip.background = element_rect(fill = "grey85", color = NA),
+          strip.text = element_text(face = "italic"),
+          legend.position = if (color_by_elev) "right" else "none")
 
 # Save
 ggsave("Figures/Fig_Sx_DeltaCover_ViolinJitter.png",
