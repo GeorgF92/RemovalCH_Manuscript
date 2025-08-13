@@ -188,6 +188,18 @@ car::compareCoefs(modNegBin22, modNegBin_def) # Substantial differences in some 
                                   exp.Est = exp(modNegBin22$coefficients),
                                   perc.Est = (exp(modNegBin22$coefficients) - 1) * 100), digits = 3))
 
+# Compute effect size per 100 m elevation increase
+# Extract elevation coefficient from final model
+coef_elev_eri <- coef(modNegBin22)["elevation"]
+
+# Compute multiplicative effect and percent change per 100 m
+exp_100m_eri <- exp(100 * coef_elev_eri)
+perc_100m_eri <- (exp_100m_eri - 1) * 100
+
+# Print effect size interpretation
+print(paste("Multiplicative effect per 100 m:", round(exp_100m_eri, 3)))
+print(paste("Percent change per 100 m:", round(perc_100m_eri, 1)))
+
 # Checking model assumptions
 simulationOutput <- simulateResiduals(fittedModel = modNegBin22)
 plot(simulationOutput) # No problems detected
@@ -206,9 +218,25 @@ car::residualPlots(modNegBin_def, type = "deviance", pch = 20, smooth = list(col
 influenceIndexPlot(modNegBin_def, vars = c("Studentized", "hat", "Cook"), id = list(n = c(4)))
 
 # Parameter interpretation
-(resmodNegBin <- round(data.frame(summary(modNegBin_def)$coefficients,
-                                  exp.Est = exp(modNegBin_def$coefficients),
-                                  perc.Est = (exp(modNegBin_def$coefficients) - 1) * 100), digits = 3))
+# Compute exponentiated estimates and % change (per 1 unit)
+resmodNegBin <- data.frame(
+  summary(modNegBin_def)$coefficients,
+  exp.Est = exp(coef(modNegBin_def)),
+  perc.Est = (exp(coef(modNegBin_def)) - 1) * 100
+)
+
+# Interpretation per 100 m elevation change
+# Find elevation coefficient
+coef_elev_sol <- coef(modNegBin_def)["elevation"]
+
+# Compute change over 100 m
+exp_100m_sol <- exp(100 * coef_elev_sol) # raw multiplicative factor
+perc_100m_sol <- (exp_100m_sol - 1) * 100 # % increase/decrease
+
+# Add to results table
+# Print effect size interpretation
+print(paste("Multiplicative effect per 100 m:", round(exp_100m_sol, 3)))
+print(paste("Percent change per 100 m:", round(perc_100m_sol, 3)))
 
 # Checking model assumptions
 simulationOutput <- simulateResiduals(fittedModel = modNegBin_def)
