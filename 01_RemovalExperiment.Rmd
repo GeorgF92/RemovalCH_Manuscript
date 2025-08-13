@@ -160,7 +160,7 @@ lapply(all_mods, summary)
 lapply(all_mods, car::Anova)
 ```
 
-Examine 
+Examine simpler models (dropping n.s. terms)
 
 ```{r}
 # Check significance of terms in full models
@@ -209,19 +209,22 @@ Test wether there are baseline differences among plots before applying removal t
 
 ```{r}
 # Erigeron annuus
-lm_eri <- lm(cover_focal_sp_percentage ~ treatment,
-             data = filter(eri_removal, year == 2021))
-summary(lm_eri)
+glmm_eri <- glmmTMB(cover_focal_sp_prop_rescaled ~ treatment + (1 | site_name),  
+  data = dplyr::filter(eri_removal, year == 2021),
+  family = beta_family(link = "logit"))
+summary(glmm_eri)
 
 # Solidago canadensis
-lm_sol <- lm(cover_focal_sp_percentage ~ treatment,
-             data = filter(sol_removal, year == 2021))
-summary(lm_sol)
+glmm_sol <- glmmTMB(cover_focal_sp_prop_rescaled ~ treatment + (1 | site_name),  
+  data = dplyr::filter(sol_removal, year == 2021),
+  family = beta_family(link = "logit"))
+summary(glmm_sol)
 
 # Lupinus polyphyllus
-lm_lup <- lm(cover_focal_sp_percentage ~ treatment,
-             data = filter(lup_removal, year == 2021))
-summary(lm_lup)
+glmm_lup <- glmmTMB(cover_focal_sp_prop_rescaled ~ treatment + (1 | site_name),  
+  data = dplyr::filter(lup_removal, year == 2021),
+  family = beta_family(link = "logit"))
+summary(glmm_lup)
 ```
 
 # Analyses of changes in other cover groups recorded (forbs, graminoids, legumes, bare ground)
@@ -894,7 +897,8 @@ Add correlation matrix between variables
 ```{r}
 # Correlation Matrix with Raster Values
 # Load required libraries
-library(terra)      
+library(raster)
+library(terra)   
 library(corrplot)   
 
 # Subset site coordinates and site name from full dataset
@@ -907,46 +911,44 @@ sites_vect <- vect(sites, geom = c("longitude", "latitude"), crs = "EPSG:4326")
 
 # Load raster layers and extract values
 # Load rasters
-r_precip <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio18_25.rds")
+r_precip <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio12_25.rds")
 r_temp   <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio1_25.rds")
 r_pop    <- readRDS("Data/ch_popdensity_statpop13_pixel_populationdensity.rds")
-r_gdd    <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_gdd5.rds")
 
 # Convert to SpatRaster
 r_precip <- rast(r_precip)
 r_temp   <- rast(r_temp)
 r_pop    <- rast(r_pop)
-r_gdd    <- rast(r_gdd)
 
 # Extract raster values for each site point
 sites$precip      <- terra::extract(r_precip, sites_vect)[,2]
 sites$temp        <- terra::extract(r_temp,   sites_vect)[,2]
 sites$pop_density <- terra::extract(r_pop,    sites_vect)[,2]
-sites$gdd         <- terra::extract(r_gdd,    sites_vect)[,2]
 
 # Clean memory (large rasters)
-rm(r_precip, r_temp, r_pop, r_gdd); gc()
+rm(r_precip, r_temp, r_pop); gc()
 
 # Prepare correlation matrix
 env_df <- sites %>%
-  dplyr::select(elevation, precip, temp, pop_density, gdd) %>%
+  dplyr::select(elevation, precip, temp, pop_density) %>%
   na.omit()
 
 # Rename for readability
-colnames(env_df) <- c("Elevation [m]", "Precipitation", "Temperature", "Pop. Density", "Growing Degree Days (GDD)")
+colnames(env_df) <- c("Elevation [m]", "Precipitation", "Temperature", "Pop. Density")
 
 # Compute Pearson correlation
 cor_mat <- cor(env_df, method = "pearson")
 
-# Plot correlation heatmap (upper triangle)
+# Plot and export correlation heatmap
+png("Figures/Fig_Sx_CorrelationMatrix.png", width = 10, height = 11, units = "cm", res = 600)
 corrplot(cor_mat,
          method = "color",                          
          type = "upper",                            
          addCoef.col = "black",                     
-         tl.col = "black",                         
+         tl.col = "black",                          
          tl.cex = 1.1,                              
          number.cex = 0.9,                          
          col = colorRampPalette(c("darkblue", "white", "darkred"))(200),
-         diag = FALSE                               
-)
+         diag = FALSE)
+dev.off()
 ```
