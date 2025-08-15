@@ -172,24 +172,29 @@ full_anovas <- list(
 )
 print(full_anovas)
 
-# Create simplified formulas by dropping non-significant interactions
+# Create simplified formulas by dropping non-significant terms sequentially (stepwise, one at the time)
+# STEP 1 - drop first term (3-way interaction)
 # Adjust terms based on above ANOVA results
 eri_glmmTMB_simple <- update(eri_glmmTMB,
-  . ~ year + elevation_rescaled + year:treatment + year:elevation_rescaled)
+  . ~ year + elevation_rescaled + treatment + background_management + year:elevation_rescaled +
+  elevation_rescaled:treatment + treatment:year + (1 | plotID) + (1 | site_name))
 
 sol_glmmTMB_simple <- update(sol_glmmTMB,
-  . ~ year + treatment + year:treatment)
+  . ~ year + elevation_rescaled + treatment + background_management +  year:elevation_rescaled +
+  elevation_rescaled:treatment + treatment:year + (1 | plotID) + (1 | site_name))
 
 lup_glmmTMB_poly_simple <- update(lup_glmmTMB_poly,
-  . ~ year + treatment + background_management + year:treatment + year:poly(elevation_rescaled, 2))
+  . ~ year + elevation_rescaled + treatment + background_management + year:poly(elevation_rescaled, 2)  + 
+    poly(elevation_rescaled, 2):treatment + treatment:year + (1 | plotID) + (1 | site_name))
 
 # Compare full vs simplified models (Likelihood Ratio Tests)
 cat("\n--- Full vs Simplified Model LRTs ---\n")
 print(anova(eri_glmmTMB, eri_glmmTMB_simple))
 print(anova(sol_glmmTMB, sol_glmmTMB_simple))
 print(anova(lup_glmmTMB_poly, lup_glmmTMB_poly_simple))
+# All non sig., which means the simpler model fits the data better
 
-# ANOVA tables for simplified models (to paste into response letter)
+# ANOVA tables for simplified models
 cat("\n--- Simplified Model ANOVAs ---\n")
 simpl_anovas <- list(
   erigeron = car::Anova(eri_glmmTMB_simple),
@@ -198,11 +203,94 @@ simpl_anovas <- list(
 )
 print(simpl_anovas)
 
-# Model diagnostics for simplified models
-cat("\n--- Simplified Model Diagnostics ---\n")
-test_mod_assumptions(eri_glmmTMB_simple)
-test_mod_assumptions(sol_glmmTMB_simple)
-test_mod_assumptions(lup_glmmTMB_poly_simple)
+# STEP 2 - drop second term
+# Adjust terms based on above ANOVA results
+eri_glmmTMB_simple2 <- update(eri_glmmTMB_simple,
+  . ~ year + elevation_rescaled + treatment + year:elevation_rescaled +
+  elevation_rescaled:treatment + treatment:year + (1 | plotID) + (1 | site_name))
+
+sol_glmmTMB_simple2 <- update(sol_glmmTMB_simple,
+  . ~ year + elevation_rescaled + treatment + year:elevation_rescaled +
+  elevation_rescaled:treatment + treatment:year + (1 | plotID) + (1 | site_name))
+
+lup_glmmTMB_poly_simple2 <- update(lup_glmmTMB_poly_simple,
+  . ~ year + elevation_rescaled + treatment + background_management + year:poly(elevation_rescaled, 2)  + 
+    treatment:year + (1 | plotID) + (1 | site_name))
+
+# Compare full vs simplified models (Likelihood Ratio Tests)
+cat("\n--- Simplified vs Simplified2 Model LRTs ---\n")
+print(anova(eri_glmmTMB_simple, eri_glmmTMB_simple2))
+print(anova(sol_glmmTMB_simple, sol_glmmTMB_simple2))
+print(anova(lup_glmmTMB_poly_simple, lup_glmmTMB_poly_simple2))
+
+# ANOVA tables for simplified models
+cat("\n--- Simplified2 Model ANOVAs ---\n")
+simpl_anovas <- list(
+  erigeron = car::Anova(eri_glmmTMB_simple2),
+  solidago = car::Anova(sol_glmmTMB_simple2),
+  lupinus  = car::Anova(lup_glmmTMB_poly_simple2)
+)
+print(simpl_anovas)
+# Let's keep Lupinus model
+
+# STEP 3 - drop third term
+# Adjust terms based on above ANOVA results
+eri_glmmTMB_simple3 <- update(eri_glmmTMB_simple2,
+  . ~ year + elevation_rescaled + treatment + year:elevation_rescaled +
+  treatment:year + (1 | plotID) + (1 | site_name))
+
+sol_glmmTMB_simple3 <- update(sol_glmmTMB_simple2,
+  . ~ year + elevation_rescaled + treatment + year:elevation_rescaled +
+  treatment:year + (1 | plotID) + (1 | site_name))
+
+# Compare full vs simplified models (Likelihood Ratio Tests)
+cat("\n--- Simplified2 vs Simplified3 Model LRTs ---\n")
+print(anova(eri_glmmTMB_simple2, eri_glmmTMB_simple3))
+print(anova(sol_glmmTMB_simple2, sol_glmmTMB_simple3))
+
+# ANOVA tables for simplified models 
+cat("\n--- Simplified3 Model ANOVAs ---\n")
+simpl_anovas <- list(
+  erigeron = car::Anova(eri_glmmTMB_simple3),
+  solidago = car::Anova(sol_glmmTMB_simple3)
+)
+print(simpl_anovas)
+# Let's keep also Erigeron model now, but one term of Solidago has still to be dropped
+
+# STEP 4 - drop fourth term
+# Adjust terms based on above ANOVA results
+sol_glmmTMB_simple4 <- update(sol_glmmTMB_simple3,
+  . ~ year + elevation_rescaled + treatment + 
+  treatment:year + (1 | plotID) + (1 | site_name))
+
+# Compare full vs simplified models (Likelihood Ratio Tests)
+cat("\n--- Simplified3 vs Simplified4 Model LRTs ---\n")
+print(anova(sol_glmmTMB_simple2, sol_glmmTMB_simple3))
+
+# ANOVA tables for simplified models
+cat("\n--- Simplified4 Model ANOVAs ---\n")
+car::Anova(sol_glmmTMB_simple4)
+
+# STEP 5 - drop fifth term
+# Adjust terms based on above ANOVA results
+sol_glmmTMB_simple5 <- update(sol_glmmTMB_simple4,
+  . ~ year + treatment + year:treatment + (1 | plotID) + (1 | site_name))
+
+# Compare full vs simplified models (Likelihood Ratio Tests)
+anova(sol_glmmTMB_simple4, sol_glmmTMB_simple5)
+
+# ANOVA tables for simplified models 
+car::Anova(sol_glmmTMB_simple5)
+# Most parsimonious model of Solidago reached as well
+
+# Print Anova tables of final models
+cat("\n--- Model ANOVAs of most parsimonious simplified models ---\n")
+simpl_anovas <- list(
+  erigeron = car::Anova(eri_glmmTMB_simple3),
+  solidago = car::Anova(sol_glmmTMB_simple5),
+  lupinus = car::Anova(lup_glmmTMB_poly_simple2)
+)
+print(simpl_anovas)
 ```
 
 Test wether there are baseline differences among plots before applying removal treatment
@@ -461,30 +549,7 @@ eri_breaks_fun <- function(lims) {
 ggsave(filename = "Figures/Fig_3_CoverVsElevation.png", dpi = 700, units = "cm", height = 15, width = 21)
 ```
 
-# Second version of figure 2 - STILL TO DEBUG
-
 ```{r}
-# Ensure cover_class exists in all datasets
-class_midpoints <- c(0, 0.05, 0.55, 3, 7.5, 17.5, 37.5, 62.5, 87.5)
-allowed_mids    <- class_midpoints
-
-# Map % (midpoints) to nearest class index 0-8
-to_class <- function(pct) {
-  idx <- vapply(pct, function(x) which.min(abs(allowed_mids - x)), integer(1))
-  idx - 1L
-}
-
-# Add cover_class to each dataset if missing
-for (d in c("eri_removal", "sol_removal", "lup_removal")) {
-  if (!exists(d)) stop(paste("Dataframe", d, "does not exist yet!"))
-  dat <- get(d)
-  if (!("cover_focal_sp_percentage" %in% names(dat))) {
-    stop(paste("cover_focal_sp_percentage not found in", d))
-  }
-  dat$cover_class <- to_class(dat$cover_focal_sp_percentage)
-  assign(d, dat, envir = .GlobalEnv)
-}
-
 # Prediction grids
 eri_df <- data.frame(
   elevation = rep(seq(min(eri_removal$elevation), max(eri_removal$elevation), length.out = 100), 2),
@@ -516,9 +581,9 @@ lup_df$treatment <- factor(lup_df$treatment, levels = levels(lup_removal$treatme
 glmmTMB_formula      <- cover_focal_sp_prop_rescaled ~ year * treatment * elevation
 glmmTMB_formula_poly <- cover_focal_sp_prop_rescaled ~ year * treatment * poly(elevation, 2)
 
-eri_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula,      data = eri_removal, family = beta_family())
-sol_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula,      data = sol_removal, family = beta_family())
-lup_glmmTMB <- glmmTMB::glmmTMB(glmmTMB_formula_poly, data = lup_removal, family = beta_family())
+eri_glmmTMB <- glmmTMB(glmmTMB_formula,      data = eri_removal, family = beta_family())
+sol_glmmTMB <- glmmTMB(glmmTMB_formula,      data = sol_removal, family = beta_family())
+lup_glmmTMB <- glmmTMB(glmmTMB_formula_poly, data = lup_removal, family = beta_family())
 
 # Predict % from models, then map to class scale for plotting
 # Reverse of scales::rescale(to = c(0.001, 0.999))
@@ -558,38 +623,38 @@ y_breaks_classes <- 0:8
 y_labels_pct     <- format(class_midpoints, trim = TRUE)
 
 # Plots
-(eri_plot <- ggplot(eri_df, aes(x = elevation, y = pred_class, color = treatment)) +
+(eri_plot <- ggplot(eri_df, aes(x = elevation, y = pred_pct, color = treatment)) +
   geom_point(data = eri_removal,
-             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
-  geom_line(size = 1) +
+             aes(x = elevation, y = cover_focal_sp_percentage, color = treatment),
+             alpha = 0.5) +
+  geom_line(linewidth = 1) +
   labs(title = expression(italic(Erigeron~annuus))) +
   facet_wrap(~ year, ncol = 1, scales = "free_y") +
   scale_color_viridis_d() +
   labs(x = "", y = "Cover [%]", color = "Treatment") +
-  my_theme +
-  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+  my_theme)
 
-(sol_plot <- ggplot(sol_df, aes(x = elevation, y = pred_class, color = treatment)) +
+(sol_plot <- ggplot(sol_df, aes(x = elevation, y = pred_pct, color = treatment)) +
   geom_point(data = sol_removal,
-             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
-  geom_line(size = 1) +
-  labs(title = expression(italic(Solidago~canadensis))) +
-  facet_wrap(~ year, ncol = 1) +
+             aes(x = elevation, y = cover_focal_sp_percentage, color = treatment),
+             alpha = 0.5) +
+  geom_line(linewidth = 1) +
+  labs(title = expression(italic(Erigeron~annuus))) +
+  facet_wrap(~ year, ncol = 1, scales = "free_y") +
   scale_color_viridis_d() +
-  labs(x = "Elevation [m]", y = "", color = "Treatment") +
-  my_theme +
-  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+  labs(x = "", y = "Cover [%]", color = "Treatment") +
+  my_theme)
 
-(lup_plot <- ggplot(lup_df, aes(x = elevation, y = pred_class, color = treatment)) +
+(lup_plot <- ggplot(lup_df, aes(x = elevation, y = pred_pct, color = treatment)) +
   geom_point(data = lup_removal,
-             aes(x = elevation, y = cover_class, color = treatment), alpha = 0.5) +
-  geom_line(size = 1) +
-  labs(title = expression(italic(Lupinus~polyphyllus))) +
-  facet_wrap(~ year, ncol = 1) +
+             aes(x = elevation, y = cover_focal_sp_percentage, color = treatment),
+             alpha = 0.5) +
+  geom_line(linewidth = 1) +
+  labs(title = expression(italic(Erigeron~annuus))) +
+  facet_wrap(~ year, ncol = 1, scales = "free_y") +
   scale_color_viridis_d() +
-  labs(x = "", y = "", color = "Treatment") +
-  my_theme +
-  scale_y_continuous(breaks = y_breaks_classes, labels = y_labels_pct))
+  labs(x = "", y = "Cover [%]", color = "Treatment") +
+  my_theme)
 
 # Layout plots together
 (all_cover_scatterplots_v2 <- ggpubr::ggarrange(
