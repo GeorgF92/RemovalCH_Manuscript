@@ -203,6 +203,9 @@ print(paste("Percent change per 100 m:", round(perc_100m_eri, 1)))
 # Checking model assumptions
 simulationOutput <- simulateResiduals(fittedModel = modNegBin22)
 plot(simulationOutput) # No problems detected
+
+# Print model summary for effect sizes
+summary(modNegBin22)
 ```
 
 # SOLIDAGO - Final model
@@ -241,6 +244,9 @@ print(paste("Percent change per 100 m:", round(perc_100m_sol, 3)))
 # Checking model assumptions
 simulationOutput <- simulateResiduals(fittedModel = modNegBin_def)
 plot(simulationOutput) # No problems detected
+
+# Print model summary for effect sizes
+summary(modNegBin_def)
 ```
 
 # Erigeron: Figures for Manuscript, with predicted lines from final NBRM-models
@@ -404,8 +410,8 @@ pred_eri$germ_pred <- predict(mod_nb_eri, newdata = pred_eri, type = "response")
 # Plot
 plot_eri <- ggplot(eri_germ, aes(x = elevation, y = total_germinated)) +
   geom_point(alpha = 0.6) +
-  geom_line(data = pred_eri, aes(x = elevation, y = germ_pred), color = line_color_eri, size = 1) +  # CHANGED: uses conditional color
-  labs(title = "Erigeron annuus",  # Title now italicized via theme
+  geom_line(data = pred_eri, aes(x = elevation, y = germ_pred), color = line_color_eri, size = 1) +
+  labs(title = "",
        x = "Elevation [m]",
        y = "Number of seedlings") +
   my_theme
@@ -431,8 +437,8 @@ pred_sol$germ_pred <- predict(mod_nb_sol, newdata = pred_sol, type = "response")
 # Plot
 plot_sol <- ggplot(sol_germ, aes(x = elevation, y = total_germinated)) +
   geom_point(alpha = 0.6) +
-  geom_line(data = pred_sol, aes(x = elevation, y = germ_pred), color = line_color_sol, size = 1) +  # CHANGED: uses conditional color
-  labs(title = "Solidago canadensis",  # Title now italicized via theme
+  geom_line(data = pred_sol, aes(x = elevation, y = germ_pred), color = line_color_sol, size = 1) + 
+  labs(title = "", 
        x = "Elevation [m]",
        y = "") + 
   my_theme
