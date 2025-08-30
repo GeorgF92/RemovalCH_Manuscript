@@ -491,7 +491,7 @@ eri_breaks <- c(min(eri_breaks_raw), eri_breaks_raw[eri_breaks_raw > 2.5])
 # Raw Erigeron cover classes
 eri_breaks_raw <- sort(unique(eri_removal$cover_focal_sp_percentage))
 
-# Facet-aware breaks: keep min (e.g., 0) + values > 2.5%; drop "3" only in the tall (2021) panel
+# Facet-aware breaks
 eri_breaks_fun <- function(lims) {
   b <- c(min(eri_breaks_raw), eri_breaks_raw[eri_breaks_raw > 2.5])
   if (max(lims) > 20) b <- b[b != 3]   # drop 3 only when the panel has a large y-range (2021)
@@ -588,49 +588,7 @@ sol_mean_cover <- mean_cover_df %>% filter(species == "solidago")
 lup_mean_cover <- mean_cover_df %>% filter(species == "lupinus")
 ```
 
-# Fig. 4: Slopegraphs
-
-```{r}
-# Slopegraph function
-cover_slopegraph <- function(data, title, ylab, xlab){ 
-  
-  ggplot(data, aes(x = year, y = cover, color = func_group)) + 
-    ggtitle(bquote(italic(.(title)))) +        
-    xlab(xlab) + ylab(ylab) +
-    geom_line(data = filter(data, data$treatment == "Control"), 
-              aes(group = func_group, linetype = treatment), 
-              size = 0.7) +
-    geom_line(data = filter(data, data$treatment == "Removal"), 
-              aes(group = func_group, linetype = treatment), 
-              size = 0.7) +
-    geom_point(data = filter(data, data$treatment == "Control"), 
-               aes(group = func_group, shape = treatment), 
-               size = 2) +
-    geom_point(data = filter(data, data$treatment == "Removal"), 
-               aes(group = func_group, shape = treatment), 
-               size = 2) + 
-    labs(color = "Functional Group", linetype = "Treatment", shape = "Treatment") +
-    my_theme + ggsci::scale_color_startrek()
-
-} 
-
-# Visualize
-eri_slope2 <- cover_slopegraph(eri_mean_cover, title = "Erigeron annuus", ylab = "Cover [%]", xlab = "") +
-  theme(legend.position = "none") 
-sol_slope2 <- cover_slopegraph(sol_mean_cover, title = "Solidago canadensis", ylab = "", xlab = "Year") +
-  theme(legend.position = "none") 
-lup_slope2 <- cover_slopegraph(lup_mean_cover, title = "Lupinus polyphyllus", ylab = "", xlab = "") +
-  labs(color = "Functional group")
-(multi_slopegraph <- ggpubr::ggarrange(eri_slope2, sol_slope2, lup_slope2,
-                                          ncol=3, nrow=1, common.legend = TRUE, legend="right", 
-                                          labels = c("a", "b", "c"), hjust = -1,
-                                          font.label = list(size = 16, color = "black")))
-# Export in HQ
-ggsave(filename = "Figures/Fig_4_multi_funcGroup_slopegraph.png", dpi = 700, units = "cm", height = 12.8, 
-       width = 21.5, plot = multi_slopegraph)
-```
-
-# Preparative steps for fig.4 with error bars 
+# Fig. 4: Slopegraphs with error bars 
 
 ```{r}
 # --- Tidy the raw data for all species (assumes 'all_species' is a named list: erigeron, solidago, lupinus) ---
@@ -673,11 +631,7 @@ sum_cover <- cover_long %>%
 eri_sum <- filter(sum_cover, species == "erigeron")
 sol_sum <- filter(sum_cover, species == "solidago")
 lup_sum <- filter(sum_cover, species == "lupinus")
-```
 
-# V2 of Fig. 4 
-
-```{r}
 # small horizontal dodge
 pd <- position_dodge(width = 0.35)
 
@@ -720,7 +674,7 @@ lup_slope_ci <- cover_slopegraph_ci(lup_sum, title = expression(italic(Lupinus~p
   font.label = list(size = 16, color = "black")))
 
 # Export
-ggsave("Figures/Fig_4_multi_funcGroup_slopegraph_V2.png",
+ggsave("Figures/Fig_4_multi_funcGroup_slopegraph.png",
        plot = multi_slopegraph_ci, dpi = 700, units = "cm",
        height = 12.8, width = 21.5)
 ```
