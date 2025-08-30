@@ -45,6 +45,10 @@ library(minqa)
 library(dplyr)
 library(tidyr)
 library(forcats)
+library(terra)
+library(corrplot)
+library(raster)
+library(ggcorrplot)
 
 # Settings
 Sys.setenv(LANG = "en")
@@ -682,6 +686,8 @@ ggsave("Figures/Fig_4_multi_funcGroup_slopegraph.png",
 # Fig. S2 - Visualization of delta cover changes
 
 ```{r}
+# Δ Cover violin + jitter plots
+# Plotting function
 delta_by_plot <- function(df, sp_name){
   
   # candidate elevation names
@@ -727,6 +733,7 @@ delta_df <- dplyr::bind_rows(
   dplyr::mutate(species = factor(species,
                 levels = c("Erigeron annuus","Solidago canadensis","Lupinus polyphyllus")))
 
+# Plot Δ cover (treatment colors only: purple = Control, yellow = Removal)
 p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
   
   # zero line
@@ -735,21 +742,10 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
   # violins (soft, no outline)
   geom_violin(aes(fill = treatment), width = 0.85, alpha = 0.35, color = NA, trim = TRUE) +
 
-  # jittered points (more horizontal spread to separate them)
-  { if (color_by_elev) {
-    
-      geom_point(aes(color = elev_m),
-                 position = position_jitter(width = 0.25, height = 0),
-                 alpha = 0.55, size = 2.2, show.legend = TRUE)
-    
-    } else {
-      
-      geom_point(aes(color = treatment),
-                 position = position_jitter(width = 0.25, height = 0),
-                 alpha = 0.55, size = 2.2, show.legend = FALSE)
-      
-    }
-  } +
+  # jittered points (colored by treatment)
+  geom_point(aes(color = treatment),
+             position = position_jitter(width = 0.25, height = 0),
+             alpha = 0.55, size = 2.2, show.legend = FALSE) +
 
   # facet by species (keep species names in italics, grey strip)
   facet_wrap(~ species, nrow = 1, scales = "free_y",
@@ -760,20 +756,9 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
 
   # labels and scales
   scale_x_discrete(NULL) +
-  
   ylab(expression(Delta~"%"~cover~"(2022-2021)")) +
-  
-  { if (color_by_elev) {
-    
-      scale_color_viridis_c(name = "Elevation [m]")
-    
-    } else {
-      
-      list(scale_color_viridis_d(name = "Treatment"),
-           scale_fill_viridis_d(guide = "none"))
-      
-    }
-  } +
+  scale_color_viridis_d(name = "Treatment") +
+  scale_fill_viridis_d(guide = "none") +
 
   # Add panel border
   theme_classic(base_size = 12) +
@@ -781,26 +766,18 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
           panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
           strip.background = element_rect(fill = "grey85", color = NA),
           strip.text = element_text(face = "italic"),
-          legend.position = if (color_by_elev) "right" else "none")
+          legend.position = "none")
 
-# Save
+# Save 
 ggsave("Figures/Fig_S2_DeltaCover_ViolinJitter.png",
        p_delta, width = 21, height = 8, units = "cm", dpi = 600)
 ```
 
-# Fig. S3 - species-specific correlation matrix between variables at site sccale
+# Fig. S3 - species-specific correlation matrices between several variables at site sccale
 
 ```{r}
 # Correlation Matrix: Environmental, Anthropogenic, and Survey Data at locations of study sites
-# Load required libraries
-library(dplyr)
-library(terra)
-library(corrplot)
-library(raster)
-library(ggcorrplot)
-
 # Load rasters once for entire script
-# Load raster data from RDS
 r_precip <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio12_25.rds")
 r_temp   <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio1_25.rds")
 r_pop    <- readRDS("Data/ch_popdensity_statpop13_pixel_populationdensity.rds")
@@ -818,8 +795,7 @@ site_summary <- removal_data %>%
     sampling_effort = n(),
     invasive_cover_mean = mean(non_natives_percentage, na.rm = TRUE),
     native_veg_cover_mean = mean(natives_percentage, na.rm = TRUE),
-    .groups = "drop"
-  )
+    .groups = "drop")
 
 # Unique site-level spatial data (keep species info for later filtering)
 sites_all <- removal_data %>%
@@ -868,8 +844,9 @@ for (sp in unique_species) {
   cor_mat <- cor(cor_data, method = "pearson")
 
   # Export species-specific figure
-  png(paste0("Figures/Fig_Sx_CorrelationMatrix_", gsub(" ", "_", sp), ".png"),
+  png(paste0("Figures/Fig_S3_CorrelationMatrix_", gsub(" ", "_", sp), ".png"),
       width = 12, height = 11, units = "cm", res = 600)
+  
   corrplot(cor_mat,
            method = "color",
            type = "upper",
@@ -900,7 +877,7 @@ colnames(cor_data_all) <- c("Elevation [m]",
 cor_mat_all <- cor(cor_data_all, method = "pearson")
 
 # Visualize and export
-png("Figures/Fig_Sx_CorrelationMatrix_AllSites.png", width = 12, height = 11, units = "cm", res = 600)
+png("Figures/Fig_S3_CorrelationMatrix_AllSites.png", width = 12, height = 11, units = "cm", res = 600)
 corrplot(cor_mat_all,
          method = "color",
          type = "upper",
