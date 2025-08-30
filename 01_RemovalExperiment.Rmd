@@ -679,10 +679,11 @@ ggsave("Figures/Fig_4_multi_funcGroup_slopegraph.png",
        height = 12.8, width = 21.5)
 ```
 
-# Fig. S3 - Visualization of delta cover changes
+# Fig. S2 - Visualization of delta cover changes
 
 ```{r}
 delta_by_plot <- function(df, sp_name){
+  
   # candidate elevation names
   elev_candidates <- c("elevation","elev_m","elevation_raw","elevation_rescaled")
   elev_col <- intersect(elev_candidates, names(df))
@@ -691,17 +692,20 @@ delta_by_plot <- function(df, sp_name){
     dplyr::mutate(year = as.character(year)) %>%
     dplyr::select(
       dplyr::any_of(c("plotID","treatment","year","cover_focal_sp_percentage")),
-      tidyselect::all_of(elev_col)              
-    )
+      tidyselect::all_of(elev_col))
 
   # ensure we have elev_m
   if (length(elev_col) == 0) {
     df2$elev_m <- NA_real_
+    
   } else {
+    
     df2 <- dplyr::rename(df2, elev_m = tidyselect::all_of(elev_col[1]))
+    
   }
 
   df2 %>%
+    
     tidyr::pivot_wider(names_from = year, values_from = cover_focal_sp_percentage) %>%
     dplyr::filter(!is.na(`2021`), !is.na(`2022`)) %>%
     dplyr::transmute(
@@ -711,63 +715,63 @@ delta_by_plot <- function(df, sp_name){
                           labels = c("Control","Removal")),
       elev_m,
       delta      = `2022` - `2021`,
-      start_2021 = `2021`
-    )
+      start_2021 = `2021`)
 }
 
 # Build Δ table
 delta_df <- dplyr::bind_rows(
   delta_by_plot(eri_removal, "Erigeron annuus"),
   delta_by_plot(sol_removal, "Solidago canadensis"),
-  delta_by_plot(lup_removal, "Lupinus polyphyllus")
-) %>%
-  dplyr::mutate(
-    species = factor(species,
-                     levels = c("Erigeron annuus","Solidago canadensis","Lupinus polyphyllus"))
-  )
+  delta_by_plot(lup_removal, "Lupinus polyphyllus")) %>%
+  
+  dplyr::mutate(species = factor(species,
+                levels = c("Erigeron annuus","Solidago canadensis","Lupinus polyphyllus")))
 
 p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
+  
   # zero line
   geom_hline(yintercept = 0, linewidth = 0.4, linetype = 2, color = "grey40") +
 
   # violins (soft, no outline)
-  geom_violin(aes(fill = treatment),
-              width = 0.85, alpha = 0.35, color = NA, trim = TRUE) +
+  geom_violin(aes(fill = treatment), width = 0.85, alpha = 0.35, color = NA, trim = TRUE) +
 
   # jittered points (more horizontal spread to separate them)
-  {
-    if (color_by_elev) {
+  { if (color_by_elev) {
+    
       geom_point(aes(color = elev_m),
                  position = position_jitter(width = 0.25, height = 0),
                  alpha = 0.55, size = 2.2, show.legend = TRUE)
+    
     } else {
+      
       geom_point(aes(color = treatment),
                  position = position_jitter(width = 0.25, height = 0),
                  alpha = 0.55, size = 2.2, show.legend = FALSE)
+      
     }
   } +
 
   # facet by species (keep species names in italics, grey strip)
-  facet_wrap(
-    ~ species, nrow = 1, scales = "free_y",
-    labeller = as_labeller(c(
-      "Erigeron annuus"     = expression(italic("Erigeron annuus")),
-      "Solidago canadensis" = expression(italic("Solidago canadensis")),
-      "Lupinus polyphyllus" = expression(italic("Lupinus polyphyllus"))
-    ))
-  ) +
+  facet_wrap(~ species, nrow = 1, scales = "free_y",
+             labeller = as_labeller(c(
+             "Erigeron annuus"     = expression(italic("Erigeron annuus")),
+             "Solidago canadensis" = expression(italic("Solidago canadensis")),
+             "Lupinus polyphyllus" = expression(italic("Lupinus polyphyllus"))))) +
 
   # labels and scales
   scale_x_discrete(NULL) +
+  
   ylab(expression(Delta~"%"~cover~"(2022-2021)")) +
-  {
-    if (color_by_elev) {
+  
+  { if (color_by_elev) {
+    
       scale_color_viridis_c(name = "Elevation [m]")
+    
     } else {
-      list(
-        scale_color_viridis_d(name = "Treatment"),
-        scale_fill_viridis_d(guide = "none")
-      )
+      
+      list(scale_color_viridis_d(name = "Treatment"),
+           scale_fill_viridis_d(guide = "none"))
+      
     }
   } +
 
@@ -780,7 +784,7 @@ p_delta <- ggplot(delta_df, aes(x = treatment, y = delta)) +
           legend.position = if (color_by_elev) "right" else "none")
 
 # Save
-ggsave("Figures/Fig_Sx_DeltaCover_ViolinJitter.png",
+ggsave("Figures/Fig_S2_DeltaCover_ViolinJitter.png",
        p_delta, width = 21, height = 8, units = "cm", dpi = 600)
 ```
 
