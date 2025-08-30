@@ -22,6 +22,9 @@ This R Markdown document contains the full data processing and statistical analy
 - Perform model diagnostics and interpret outputs  
 - Visualize final results, including scatterplots with predicted lines (Fig. 3)
 
+# Reproducible setup
+This analysis was run with: glmmTMB 1.1.8, TMB 1.9.10, Matrix 1.5-4.
+
 Author: Georg V. Flückiger  
 Last updated: 2025-08-10
 
@@ -29,6 +32,9 @@ Last updated: 2025-08-10
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# Settings
+Sys.setenv(LANG = "en")
 
 # Main directory
 main_dir <- "D:/Programming/RemovalCH_Manuscript/RemovalCH_Analyses/Data/"
@@ -49,9 +55,6 @@ library(terra)
 library(corrplot)
 library(raster)
 library(ggcorrplot)
-
-# Settings
-Sys.setenv(LANG = "en")
 
 # Set ggplot theme
 my_theme <- theme(panel.grid.major = element_blank(),
@@ -777,7 +780,7 @@ ggsave("Figures/Fig_S2_DeltaCover_ViolinJitter.png",
 
 ```{r}
 # Correlation Matrix: Environmental, Anthropogenic, and Survey Data at locations of study sites
-# Load rasters once for entire script
+# Load rasters from SWECO25 dataset once for entire script
 r_precip <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio12_25.rds")
 r_temp   <- readRDS("Data/ch_bioclim_chclim25_present_pixel_1981_2010_bio1_25.rds")
 r_pop    <- readRDS("Data/ch_popdensity_statpop13_pixel_populationdensity.rds")
