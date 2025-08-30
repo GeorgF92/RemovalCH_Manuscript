@@ -22,13 +22,6 @@ This R Markdown document contains the full data processing and statistical analy
 - Perform model diagnostics and interpret outputs  
 - Visualize final results, including scatterplots with predicted lines (Fig. 3)
 
-# Required R packages
-- tidyverse: data wrangling and visualization  
-- glmmTMB: beta regression mixed-effects models  
-- DHARMa: residual diagnostics  
-- car: Type II ANOVA and model summaries  
-- ggpubr, ggsci: publication-quality visualizations
-
 Author: Georg V. Flückiger  
 Last updated: 2025-08-10
 

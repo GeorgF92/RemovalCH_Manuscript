@@ -22,12 +22,6 @@ germination experiment. It links seedling emergence to site-level environmental 
  - Fit and compare generalized linear models
  - Conduct model diagnostics and visualize predicted relationships
 
-# Required R packages:
- - tidyverse: data handling and plotting
- - MASS: negative binomial models
- - car: diagnostic tools and coefficient comparison
- - DHARMa: residual diagnostics
-
 Author: Georg V. Flückiger  
 Last updated: 2025-08-10
 
