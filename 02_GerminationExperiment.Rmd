@@ -243,7 +243,7 @@ plot(simulationOutput) # No problems detected
 summary(modNegBin_def)
 ```
 
-# Erigeron: Figures for Manuscript, with predicted lines from final NBRM-models
+# Erigeron: Final figures for Manuscript (part of Fig. 5), with predicted lines from final NBRM-models
 
 ```{r}
 # Fit final model for Erigeron
@@ -293,7 +293,7 @@ eri_plot_2 <- eri_plot_2 + ylab("")
 ```
 
 
-# Solidago: Figures for Manuscript, with predicted lines from final NBRM-models
+# Solidago: Final figures for Manuscript (Part of Fig. 5), with predicted lines from final NBRM-models
 
 ```{r}
 # Fit final model for Erigeron
@@ -445,6 +445,6 @@ combined_plot <- ggarrange(plot_eri, plot_sol,
                            common.legend = FALSE)
 
 # Export
-ggsave("Figures/Fig_Sx_TotalGermination_VS_Elevation.png", 
+ggsave("Figures/Fig_S4_TotalGermination_VS_Elevation.png", 
        combined_plot, width = 14, height = 7, units = "cm", dpi = 600)
 ```
