@@ -7,4 +7,4 @@ Analyzes species-specific recovery and community-level responses following the r
 # 02_GerminationExperiment
 Investigates germination patterns of Erigeron annuus and Solidago canadensis in relation to elevation, vegetation cover, and sampling area. This script processes field data from a seedling emergence experiment and uses negative binomial regression models to handle overdispersed count data. It includes model diagnostics and figures visualizing predicted germination responses to site-level predictors.
 
-These scripts are part of the analysis for a manuscript submitted to Alpine Botany (May 2025) and are designed to ensure reproducibility of the results.
+These scripts are part of the analysis for a manuscript published in Alpine Botany (September 2025) and are designed to ensure reproducibility of the results.
